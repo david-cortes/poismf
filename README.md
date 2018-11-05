@@ -1,12 +1,17 @@
 # Poisson Factorization
 
-Very fast non-negative matrix factorization for sparse data, based on Poisson likelihood with l2 regularization. The algorithm is described in the paper "Fast Non-Bayesian Poisson Factorization for Implicit-Feedback Recommendations" (to be released soon).
+Very fast and memory-efficient non-negative matrix factorization for sparse data, based on Poisson likelihood with l2 regularization. The algorithm is described in the paper "Fast Non-Bayesian Poisson Factorization for Implicit-Feedback Recommendations" (to be released in a couple of days).
 
-The model is similar to [Hierarchical Poisson Factorization](https://arxiv.org/abs/1311.1704), but uses regularization instead of a bayesian hierarchical structure, and is fit through proximal gradient descent instead of variational inference, resulting in a procedure that can be more than 1,000x faster than HPF on larger datasets, and 20x faster than implicit-ALS as implemented in the package [implicit](https://github.com/benfred/implicit).
+The model is similar to [Hierarchical Poisson Factorization](https://arxiv.org/abs/1311.1704), but uses regularization instead of a bayesian hierarchical structure, and is fit through proximal gradient descent instead of variational inference, resulting in a procedure that, for larger datasets, can be more than 400x faster than HPF, and 15x faster than implicit-ALS as implemented in the package [implicit](https://github.com/benfred/implicit).
 
 At the moment it does not have a complete API, only a function to optimize the user/item factor matrices in-place - a similar API to [hpfrec](https://www.github.com/david-cortes/hpfrec) will come in the future.
 
 The implementation is in C with a Python interface. Parallelization is through OpenMP.
+
+![image](tables/rr_table.png "retailrocket")
+![image](tables/ms_table.png "millionsong")
+
+(_Statistics benchmarked on a Skylake server using 16 cores_)
 
 # Installation
 
@@ -50,18 +55,44 @@ B = np.random.gamma(1, 1, size=(nitems, k)) ## Item factors
 
 ## Fitting the model
 from poismf import run_pgd
-run_pgd(X, A, B, ncores=4) ## adjust the number of threads/cores accordingly for your computer
+run_pgd(X, A, B, ncores=1) ## adjust the number of threads/cores accordingly for your computer
 ## Matrices A and B are optimized in-place
 
 ## Full call
-run_pgd(X, A, B, double reg_param=1e7, double step_size=1e-5, niter=10, npass=1, ncores=1)
+run_pgd(X, A, B, reg_param=1e9, step_size=1e-7, niter=10, npass=1, ncores=1)
 
 ## Making predictions
 ## Predict count of item 10 for user 25
 np.dot(A[25], B[10])
 
 
-### Be sure to check that your A and B matrices don't turn to NaNs!!
+### Be sure to check that your A and B matrices don't turn to NaNs to Zeros!!
 ```
 
 You can also take the C file `poismf/pgd.c` and use it in some language other than Python - works with a copy of `X` in row-sparse and another in column-sparse formats.
+
+```c
+/* Main function
+	A                           : Pointer to the already-initialized A matrix (user-factor)
+	Xr, Xr_indptr, Xr_indices   : Pointers to the X matrix in row-sparse format
+	B                           : Pointer to the already-initialized B matrix (item-factor)
+	Xc, Xc_indptr, Xc_indices   : Pointers to the X matrix in column-sparse format
+	dimA                        : Number of rows in the A matrix
+	dimB                        : Number of rows in the B matrix
+	nnz                         : Number of non-zero elements in the X matrix
+	k                           : Dimensionality for the factorizing matrices (number of columns of A and B matrices)
+	reg_param                   : Regularization pameter for the L2 norm of the A and B matrices
+	step_size                   : Initial step size for PGD updates (will be decreased by 1/2 every iteration)
+	numiter                     : Number of iterations for which to run the procedure
+	npass                       : Number of updates to the same matrix per iteration
+	ncores                      : Number of threads to use
+Matrices A and B are optimized in-place.
+Function does not have a return value.
+*/
+void optimize(
+	double *restrict A, double *restrict Xr, size_t *restrict Xr_indptr, size_t *restrict Xr_indices,
+	double *restrict B, double *restrict Xc, size_t *restrict Xc_indptr, size_t *restrict Xc_indices,
+	const size_t dimA, const size_t dimB, const size_t nnz, const size_t k,
+	const double reg_param, double step_size,
+	const size_t numiter, const size_t npass, const int ncores)
+```

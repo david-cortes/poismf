@@ -11,7 +11,7 @@ cdef extern from "pgd.c":
 		size_t maxiter, size_t npass, int ncores
 		)
 
-def run_pgd(Xcoo, np.ndarray[double, ndim=2] A, np.ndarray[double, ndim=2] B, double reg_param=1e7, double step_size=1e-5, size_t niter=10, size_t npass=1, int ncores=1):
+def run_pgd(Xcoo, np.ndarray[double, ndim=2] A, np.ndarray[double, ndim=2] B, double reg_param=1e9, double step_size=1e-7, size_t niter=10, size_t npass=1, int ncores=1):
 	Xcsr = csr_matrix(Xcoo)
 	Xcsc = csc_matrix(Xcoo)
 
