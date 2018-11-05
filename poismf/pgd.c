@@ -1,7 +1,7 @@
  /* Poisson Factorization for sparse matrices
 
- Based on alternating proximal calc_gradient iteration.
- Variables must be initialized from outside this function.
+ Based on alternating proximal gradient iteration.
+ Variables must be initialized from outside the main function provided here.
  Writen for C99 standard.
 
  Copyright David Cortes 2018 */
@@ -48,12 +48,14 @@ void calc_grad(double *out, double *curr, double *F, double *X, size_t *Xind, si
 {
 	double cnst;
 	int one = 1;
+	memset(out, 0, sizeof(double) * k);
 
 	for (size_t i = 0; i < nnz_this; i++){
-		cnst = -X[i] / ddot(&k, F + Xind[i]*k, &one, curr, &one);
+		cnst = X[i] / ddot(&k, F + Xind[i]*k, &one, curr, &one);
 		daxpy(&k, &cnst, F + Xind[i]*k, &one, out, &one);
 	}
 }
+
 
 void sum_by_cols(double *restrict out, double *restrict M, size_t nrow, size_t ncol, int ncores)
 {
@@ -116,9 +118,8 @@ void optimize(
 
 			nnz_this = Xr_indptr[ia + 1] - Xr_indptr[ia];
 			for (size_t p = 0; p < npass; p++){
-				memset(buffer1, 0, sizeof(double) * k);
 				calc_grad(buffer1, A + ia*k, B, Xr + Xr_indptr[ia], Xr_indices + Xr_indptr[ia], nnz_this, k_int);
-				daxpy(&k_int, &neg_step_sz, buffer1, &one, A + ia*k, &one);
+				daxpy(&k_int, &step_size, buffer1, &one, A + ia*k, &one);
 
 				daxpy(&k_int, &one_dbl, cnst_sum, &one, A + ia*k, &one);
 				dscal(&k_int, &cnst_div, A + ia*k, &one);
@@ -138,9 +139,8 @@ void optimize(
 
 			nnz_this = Xc_indptr[ib + 1] - Xc_indptr[ib];
 			for (size_t p = 0; p < npass; p++){
-				memset(buffer1, 0, sizeof(double) * k);
 				calc_grad(buffer1, B + ib*k, A, Xc + Xc_indptr[ib], Xc_indices + Xc_indptr[ib], nnz_this, k_int);
-				daxpy(&k_int, &neg_step_sz, buffer1, &one, B + ib*k, &one);
+				daxpy(&k_int, &step_size, buffer1, &one, B + ib*k, &one);
 
 				daxpy(&k_int, &one_dbl, cnst_sum, &one, B + ib*k, &one);
 				dscal(&k_int, &cnst_div, B + ib*k, &one);

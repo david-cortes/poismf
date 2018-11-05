@@ -18,21 +18,20 @@ def run_pgd(Xcoo, np.ndarray[double, ndim=2] A, np.ndarray[double, ndim=2] B, do
 	cdef np.ndarray[double, ndim=1] Xr = Xcsr.data.astype('float64')
 	cdef np.ndarray[size_t, ndim=1] Xr_indices = Xcsr.indices.astype(ctypes.c_size_t)
 	cdef np.ndarray[size_t, ndim=1] Xr_indptr = Xcsr.indptr.astype(ctypes.c_size_t)
-	cdef size_t dimA = Xcoo.shape[0]
+	cdef size_t dimA = A.shape[0]
 
 	cdef np.ndarray[double, ndim=1] Xc = Xcsc.data.astype('float64')
 	cdef np.ndarray[size_t, ndim=1] Xc_indices = Xcsc.indices.astype(ctypes.c_size_t)
 	cdef np.ndarray[size_t, ndim=1] Xc_indptr = Xcsc.indptr.astype(ctypes.c_size_t)
-	cdef size_t dimB = Xcoo.shape[1]
+	cdef size_t dimB = B.shape[0]
 
 	cdef size_t nnz = Xcsr.data.shape[0]
 	cdef size_t k = A.shape[1]
 
 	optimize(
-		&A[0,0], &Xr[0], &Xr_indices[0], &Xr_indptr[0],
-		&B[0,0], &Xc[0], &Xc_indices[0], &Xc_indptr[0],
+		&A[0,0], &Xr[0], &Xr_indptr[0], &Xr_indices[0],
+		&B[0,0], &Xc[0], &Xc_indptr[0], &Xc_indices[0],
 		dimA, dimB, nnz, k,
 		reg_param, step_size,
 		niter, npass, ncores
 		)
-
