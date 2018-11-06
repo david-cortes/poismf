@@ -86,7 +86,7 @@ void sum_by_cols(double *restrict out, double *restrict M, size_t nrow, size_t n
 Matrices A and B are optimized in-place.
 Function does not have a return value.
 */
-void optimize(
+void run_poismf(
 	double *restrict A, double *restrict Xr, size_t *restrict Xr_indptr, size_t *restrict Xr_indices,
 	double *restrict B, double *restrict Xc, size_t *restrict Xc_indptr, size_t *restrict Xc_indices,
 	const size_t dimA, const size_t dimB, const size_t nnz, const size_t k,

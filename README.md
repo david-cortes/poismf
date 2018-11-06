@@ -1,6 +1,7 @@
 # Poisson Factorization
 
-Very fast and memory-efficient non-negative matrix factorization for sparse data, based on Poisson likelihood with l2 regularization. The algorithm is described in the paper "Fast Non-Bayesian Poisson Factorization for Implicit-Feedback Recommendations" (to be released in a couple of days).
+Very fast and memory-efficient non-negative matrix factorization for sparse data, based on Poisson likelihood with l2 regularization. The algorithm is described in the paper "Fast Non-Bayesian Poisson Factorization for Implicit-Feedback Recommendations":
+[http://arxiv.org/abs/1811.01908](http://arxiv.org/abs/1811.01908)
 
 The model is similar to [Hierarchical Poisson Factorization](https://arxiv.org/abs/1311.1704), but uses regularization instead of a bayesian hierarchical structure, and is fit through proximal gradient descent instead of variational inference, resulting in a procedure that, for larger datasets, can be more than 400x faster than HPF, and 15x faster than implicit-ALS as implemented in the package [implicit](https://github.com/benfred/implicit).
 
@@ -89,7 +90,7 @@ You can also take the C file `poismf/pgd.c` and use it in some language other th
 Matrices A and B are optimized in-place.
 Function does not have a return value.
 */
-void optimize(
+void run_poismf(
 	double *restrict A, double *restrict Xr, size_t *restrict Xr_indptr, size_t *restrict Xr_indices,
 	double *restrict B, double *restrict Xc, size_t *restrict Xc_indptr, size_t *restrict Xc_indices,
 	const size_t dimA, const size_t dimB, const size_t nnz, const size_t k,

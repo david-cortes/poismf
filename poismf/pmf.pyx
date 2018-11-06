@@ -4,8 +4,8 @@ import ctypes
 from scipy.sparse import coo_matrix, csr_matrix, csc_matrix
 
 cdef extern from "pgd.c":
-	void optimize(double *A, double *Xr, size_t *Xr_indices, size_t *Xr_indptr,
-		double *B, double* Xc, size_t *Xc_indices, size_t *Xc_indptr,
+	void run_poismf(double *A, double *Xr, size_t *Xr_indptr, size_t *Xr_indices,
+		double *B, double* Xc, size_t *Xc_indptr, size_t *Xc_indices,
 		size_t dimA, size_t dimB, size_t nnz, size_t k,
 		double reg_param, double step_size,
 		size_t maxiter, size_t npass, int ncores
@@ -28,7 +28,7 @@ def run_pgd(Xcoo, np.ndarray[double, ndim=2] A, np.ndarray[double, ndim=2] B, do
 	cdef size_t nnz = Xcsr.data.shape[0]
 	cdef size_t k = A.shape[1]
 
-	optimize(
+	run_poismf(
 		&A[0,0], &Xr[0], &Xr_indptr[0], &Xr_indices[0],
 		&B[0,0], &Xc[0], &Xc_indptr[0], &Xc_indices[0],
 		dimA, dimB, nnz, k,
