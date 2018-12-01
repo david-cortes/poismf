@@ -23,7 +23,6 @@ git clone https://github.com/david-cortes/poismf.git
 cd poismf
 python setup.py install
 ```
-__Note: at the moment, it's not possible to install in Windows if using Visual Studio as C compiler. It will nevertheless work in other OSes and should work fine with mingw64 in Windows too.__
 
 Requires some BLAS library such as MKL (comes by default in Anaconda) or OpenBLAS - will attempt to use the same as NumPy is using, but you can also modify `setup.py` to provide a custom path to your implementation of choice if you need to. Also requires a C compiler such as GCC or Visual Studio.
 
