@@ -41,21 +41,19 @@ void dscal_(int *N, double *DA, double *DX, int *INCX);
 #endif
 #endif
 
+/* Visual Studio as of 2018 is stuck with OpenMP 2.0 (released 2002),
+   which doesn't support parallel loops with unsigned iterators.
+   As the code is wrapped in Cython and Cython does not support typdefs conditional on compiler,
+   this will map size_t to long on Windows regardless of compiler.
+   Can be safely removed if not compiling with MSVC. */
+#if defined(_MSC_VER) || defined(_WIN32) || defined(_WIN64)
+#define size_t long
+#else
+#include <stddef.h>
+#endif
+
 /* Helper functions */
 #define nonneg(x) (x >= 0)? x : 0
-
-void calc_grad(double *out, double *curr, double *F, double *X, size_t *Xind, size_t nnz_this, int k)
-{
-	double cnst;
-	int one = 1;
-	memset(out, 0, sizeof(double) * k);
-
-	for (size_t i = 0; i < nnz_this; i++){
-		cnst = X[i] / ddot(&k, F + Xind[i]*k, &one, curr, &one);
-		daxpy(&k, &cnst, F + Xind[i]*k, &one, out, &one);
-	}
-}
-
 
 void sum_by_cols(double *restrict out, double *restrict M, size_t nrow, size_t ncol, int ncores)
 {
@@ -66,6 +64,18 @@ void sum_by_cols(double *restrict out, double *restrict M, size_t nrow, size_t n
 		for (size_t col = 0; col < ncol; col++){
 			out[col] += M[row*ncol + col];
 		}
+	}
+}
+
+void calc_grad(double *out, double *curr, double *F, double *X, size_t *Xind, size_t nnz_this, int k)
+{
+	double cnst;
+	int one = 1;
+	memset(out, 0, sizeof(double) * k);
+
+	for (size_t i = 0; i < nnz_this; i++){
+		cnst = X[i] / ddot(&k, F + Xind[i]*k, &one, curr, &one);
+		daxpy(&k, &cnst, F + Xind[i]*k, &one, out, &one);
 	}
 }
 
@@ -94,8 +104,14 @@ void run_poismf(
 	const size_t numiter, const size_t npass, const int ncores)
 {
 
+	/* Visual Studio does not support variable length arrays */
+	#ifdef _MSC_VER
+	double *buffer1 = (double*) malloc(sizeof(double) * k);
+	double *cnst_sum = (double*) malloc(sizeof(double) * k);
+	#else
 	double buffer1[k];
 	double cnst_sum[k];
+	#endif
 	double cnst_div;
 
 	int k_int = (int) k;
@@ -152,4 +168,9 @@ void run_poismf(
 		neg_step_sz = -step_size;
 
 	}
+
+	#ifdef _MSC_VER
+	free(buffer1);
+	free(cnst_sum);
+	#endif
 }
