@@ -5,32 +5,6 @@ import numpy
 from sys import platform
 import os
 
-## Note: As of the end of 2018, MSVC is still stuck with OpenMP 2.0 (released 2002), which does not support
-## parallel for loops with unsigend iterators. If you are using a different compiler, this part can be safely removed
-if platform[:3] == "win":
-    import re
-    fout = open("temp1.txt", "w")
-    with open("poismf\\pmf.pyx", "r") as fin:
-            for line in fin:
-                    fout.write(re.sub("size_t([^\w])", "long\\1", line))
-    fout.close()
-    fout = open("temp2.txt", "w")
-    with open("poismf\\pgd.c", "r") as fin:
-            for line in fin:
-                    fout.write(re.sub("size_t([^\w])", "long\\1", line))
-    fout.close()
-
-    fout = open("poismf\\pmf.pyx", "w")
-    with open("temp1.txt", "r") as fin:
-            for line in fin:
-                    fout.write(line)
-    fout.close()
-    fout = open("poismf\\pgd.c", "w")
-    with open("temp2.txt", "r") as fin:
-            for line in fin:
-                    fout.write(line)
-    fout.close()
-
 ## https://stackoverflow.com/questions/52905458/link-cython-wrapped-c-functions-against-blas-from-numpy
 err_msg = "Could not locate BLAS library - you'll need to manually modify setup.py to add its path."
 try:
@@ -42,7 +16,6 @@ except:
         blas_path = numpy.__config__.blas_opt_info["library_dirs"][0]
     else:
         raise ValueError(err_msg)
-
 
 if platform[:3] == "win":
     if os.path.exists(os.path.join(blas_path, "mkl_rt.lib")):
