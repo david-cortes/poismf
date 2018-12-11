@@ -55,7 +55,7 @@ class build_ext_subclass( build_ext ):
         else: # gcc
             for e in self.extensions:
                 e.extra_link_args += ["-L"+blas_path, "-l:"+blas_file]
-                e.extra_compile_args += ['-O3', '-fopenmp', '-march=native', '-std=c99']
+                e.extra_compile_args += ['-O2', '-fopenmp', '-march=native', '-std=c99']
                 e.extra_link_args += ['-fopenmp']
         build_ext.build_extensions(self)
 
