@@ -51,11 +51,11 @@ class build_ext_subclass( build_ext ):
         if compiler == 'msvc': # visual studio
             for e in self.extensions:
                 e.extra_link_args += [os.path.join(blas_path, blas_file)]
-                e.extra_compile_args += ['/O2', '/openmp']
+                e.extra_compile_args += ['/O2']
         else: # gcc
             for e in self.extensions:
                 e.extra_link_args += ["-L"+blas_path, "-l:"+blas_file]
-                e.extra_compile_args += ['-O2', '-fopenmp', '-march=native']
+                e.extra_compile_args += ['-O3', '-fopenmp', '-march=native', '-std=c99']
                 e.extra_link_args += ['-fopenmp']
         build_ext.build_extensions(self)
 
@@ -66,5 +66,5 @@ setup(
     author = 'David Cortes',
     url = 'https://github.com/david-cortes/poismf',
     cmdclass = {'build_ext': build_ext_subclass},
-    ext_modules = [Extension("poismf", sources=["poismf/pmf.pyx"], include_dirs=[numpy.get_include()], extra_link_args=[], extra_compile_args=['-std=c99'])]
+    ext_modules = [Extension("poismf", sources=["poismf/pmf.pyx"], include_dirs=[numpy.get_include()])]
     )
