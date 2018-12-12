@@ -104,13 +104,13 @@ void run_poismf(
 	const size_t numiter, const size_t npass, const int ncores)
 {
 
-	/* Visual Studio does not support variable length arrays */
-	#ifdef _MSC_VER
-	double *buffer1 = (double*) malloc(sizeof(double) * k);
-	double *cnst_sum = (double*) malloc(sizeof(double) * k);
-	#else
+	/* DAMN YOU MS: Visual Studio as of 2018 still does not support variable length arrays as set in C standard 20 years ago*/
+	#ifndef _MSC_VER
 	double buffer1[k];
 	double cnst_sum[k];
+	#else
+	double *buffer1 = (double*) malloc(sizeof(double) * k);
+	double *cnst_sum = (double*) malloc(sizeof(double) * k);
 	#endif
 	double cnst_div;
 

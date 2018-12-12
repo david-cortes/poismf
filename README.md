@@ -23,10 +23,9 @@ git clone https://github.com/david-cortes/poismf.git
 cd poismf
 python setup.py install
 ```
+**Note: parallelization (multithreading) is disabled by default in Windows with compilers `msvc` and `mingw32`. To enable it, you need to install mingw with OpenMP and add it in `setup.py`**
 
 Requires some BLAS library such as MKL (comes by default in Anaconda) or OpenBLAS - will attempt to use the same as NumPy is using, but you can also modify `setup.py` to provide a custom path to your implementation of choice if you need to. Also requires a C compiler such as GCC or Visual Studio.
-
-**Note : parallelization (multithreading) will not work when compiling with Visual Studio. Use GCC for better performance.**
 
 For any installation problems, please open an issue in GitHub providing information about your system (OS, BLAS, C compiler) and Python installation.
 
