@@ -7,30 +7,7 @@
  Copyright David Cortes 2018 */
 
 #include <string.h>
-
-/* BLAS functions
-https://stackoverflow.com/questions/52905458/link-cython-wrapped-c-functions-against-blas-from-numpy/52913120#52913120
- */
-double ddot(int *N, double *DX, int *INCX, double *DY, int *INCY);
-void daxpy(int *N, double *DA, double *DX, int *INCX, double *DY, int *INCY);
-void dscal(int *N, double *DA, double *DX, int *INCX);
-
-
-#ifndef ddot
-double ddot_(int *N, double *DX, int *INCX, double *DY, int *INCY);
-#define ddot(N, DX, INCX, DY, INCY) ddot_(N, DX, INCX, DY, INCY)
-#endif
-
-#ifndef daxpy
-void daxpy_(int *N, double *DA, double *DX, int *INCX, double *DY, int *INCY);
-#define daxpy(N, DA, DX, INCX, DY, INCY) daxpy_(N, DA, DX, INCX, DY, INCY)
-#endif
-
-#ifndef dscal
-void dscal_(int *N, double *DA, double *DX, int *INCX);
-#define dscal(N, DA, DX, INCX) dscal_(N, DA, DX, INCX)
-#endif
-
+#include "findblas.h" /* https://github.com/david-cortes/findblas */
 
 /* Aliasing for compiler optimizations */
 #ifndef restrict
@@ -70,12 +47,11 @@ void sum_by_cols(double *restrict out, double *restrict M, size_t nrow, size_t n
 void calc_grad(double *out, double *curr, double *F, double *X, size_t *Xind, size_t nnz_this, int k)
 {
 	double cnst;
-	int one = 1;
 	memset(out, 0, sizeof(double) * k);
 
 	for (size_t i = 0; i < nnz_this; i++){
-		cnst = X[i] / ddot(&k, F + Xind[i]*k, &one, curr, &one);
-		daxpy(&k, &cnst, F + Xind[i]*k, &one, out, &one);
+		cnst = X[i] / cblas_ddot(k, F + Xind[i]*k, 1, curr, 1);
+		cblas_daxpy(k, cnst, F + Xind[i]*k, 1, out, 1);
 	}
 }
 
@@ -116,9 +92,6 @@ void run_poismf(
 
 	int k_int = (int) k;
 	size_t nnz_this;
-
-	int one = 1;
-	double one_dbl = 1;
 	double neg_step_sz = -step_size;
 
 	for (size_t fulliter = 0; fulliter < numiter; fulliter++){
@@ -126,19 +99,20 @@ void run_poismf(
 		/* Constants to use later */
 		memset(cnst_sum, 0, sizeof(double) * k);
 		sum_by_cols(cnst_sum, B, dimB, k, ncores);
-		dscal(&k_int, &neg_step_sz, cnst_sum, &one);
+		cblas_dscal(k_int, neg_step_sz, cnst_sum, 1);
+
 		cnst_div = 1 / (1 + 2 * reg_param * step_size);
 
-		#pragma omp parallel for schedule(dynamic) num_threads(ncores) shared(A) private(buffer1, nnz_this) firstprivate(B, k, k_int, nnz, cnst_sum, cnst_div, one, one_dbl, npass, Xr, Xr_indptr, Xr_indices)
+		#pragma omp parallel for schedule(dynamic) num_threads(ncores) shared(A) private(buffer1, nnz_this) firstprivate(B, k, k_int, nnz, cnst_sum, cnst_div, npass, Xr, Xr_indptr, Xr_indices)
 		for (size_t ia = 0; ia < dimA; ia++){
 
 			nnz_this = Xr_indptr[ia + 1] - Xr_indptr[ia];
 			for (size_t p = 0; p < npass; p++){
 				calc_grad(buffer1, A + ia*k, B, Xr + Xr_indptr[ia], Xr_indices + Xr_indptr[ia], nnz_this, k_int);
-				daxpy(&k_int, &step_size, buffer1, &one, A + ia*k, &one);
+				cblas_daxpy(k_int, step_size, buffer1, 1, A + ia*k, 1);
 
-				daxpy(&k_int, &one_dbl, cnst_sum, &one, A + ia*k, &one);
-				dscal(&k_int, &cnst_div, A + ia*k, &one);
+				cblas_daxpy(k_int, 1, cnst_sum, 1, A + ia*k, 1);
+				cblas_dscal(k_int, cnst_div, A + ia*k, 1);
 				for (size_t i = 0; i < k; i++) {A[ia*k + i] = nonneg(A[ia*k + i]);}
 			}
 
@@ -148,18 +122,18 @@ void run_poismf(
 		/* Constants to use later */
 		memset(cnst_sum, 0, sizeof(double) * k);
 		sum_by_cols(cnst_sum, A, dimA, k, ncores);
-		dscal(&k_int, &neg_step_sz, cnst_sum, &one);
+		cblas_dscal(k_int, neg_step_sz, cnst_sum, 1);
 
-		#pragma omp parallel for schedule(dynamic) num_threads(ncores) shared(B) private(buffer1, nnz_this) firstprivate(A, k, k_int, nnz, cnst_sum, cnst_div, one, one_dbl, npass, Xc, Xc_indptr, Xc_indices)
+		#pragma omp parallel for schedule(dynamic) num_threads(ncores) shared(B) private(buffer1, nnz_this) firstprivate(A, k, k_int, nnz, cnst_sum, cnst_div, npass, Xc, Xc_indptr, Xc_indices)
 		for (size_t ib = 0; ib < dimB; ib++){
 
 			nnz_this = Xc_indptr[ib + 1] - Xc_indptr[ib];
 			for (size_t p = 0; p < npass; p++){
 				calc_grad(buffer1, B + ib*k, A, Xc + Xc_indptr[ib], Xc_indices + Xc_indptr[ib], nnz_this, k_int);
-				daxpy(&k_int, &step_size, buffer1, &one, B + ib*k, &one);
+				cblas_daxpy(k_int, step_size, buffer1, 1, B + ib*k, 1);
 
-				daxpy(&k_int, &one_dbl, cnst_sum, &one, B + ib*k, &one);
-				dscal(&k_int, &cnst_div, B + ib*k, &one);
+				cblas_daxpy(k_int, 1, cnst_sum, 1, B + ib*k, 1);
+				cblas_dscal(k_int, cnst_div, B + ib*k, 1);
 				for (size_t i = 0; i < k; i++) {B[ib*k + i] = nonneg(B[ib*k + i]);}
 			}
 		}
