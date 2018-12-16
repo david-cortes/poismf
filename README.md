@@ -25,9 +25,7 @@ python setup.py install
 ```
 (Note that it requires package `findblas`, can be installed with `pip install findblas`.)
 
-**Note: parallelization (multithreading) is disabled by default in Windows with compilers `msvc` and `mingw32`. To enable it, you need to install mingw with OpenMP and add it in `setup.py`**
-
-Requires some BLAS library such as MKL (comes by default in Anaconda) or OpenBLAS - will attempt to use the same as NumPy is using, but you can also modify `setup.py` to provide a custom path to your implementation of choice if you need to. Also requires a C compiler such as GCC or Visual Studio.
+Requires some BLAS library such as MKL (comes by default in Anaconda) or OpenBLAS - will attempt to use the same as NumPy is using. Also requires a C compiler such as GCC or Visual Studio.
 
 For any installation problems, please open an issue in GitHub providing information about your system (OS, BLAS, C compiler) and Python installation.
 
