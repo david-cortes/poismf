@@ -10,15 +10,9 @@ from findblas.distutils import build_ext_with_blas
 class build_ext_subclass( build_ext_with_blas ):
     def build_extensions(self):
         compiler = self.compiler.compiler_type
-        if compiler == 'msvc': # visual studio
+        if compiler == 'msvc': # visual studio is 'special'
             for e in self.extensions:
-                e.extra_compile_args += ['/O2']
-        elif compiler == 'ming32':
-            # mingw32 doesn't support OpenMP in a default conda install
-            # you can enable it by putting in 'extra_compile_args'
-            # the following entry '-fopenmp=libomp5 <path_to_libomp.so or .a>'
-            for e in self.extensions:
-                e.extra_compile_args += ['-O2', '-march=native', '-std=c99']
+                e.extra_compile_args += ['/O2', '/openmp']
         else:
             for e in self.extensions:
                 e.extra_compile_args += ['-O2', '-fopenmp', '-march=native', '-std=c99']
