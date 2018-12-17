@@ -43,7 +43,7 @@ void sum_by_cols(double *restrict out, double *restrict M, size_t nrow, size_t n
 {
 	memset(out, 0, sizeof(double) * ncol);
 
-	#ifndef _MSC_VER
+	#if !defined(_MSC_VER) && _OPENMP>20080101 /* OpenMP >= 3.0 */
 	/* DAMN YOU MS, WHY WON'T YOU SUPPORT SUCH BASIC FUNCTIONALITY!!! */
 	#pragma omp parallel for schedule(static) num_threads(ncores) firstprivate(nrow, ncol, M) reduction(+:out[:ncol])
 	#endif
