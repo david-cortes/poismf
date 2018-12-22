@@ -29,9 +29,12 @@
 #else
 	#include <stddef.h>
 #endif
-
-#ifdef _MSC_VER
-	#define size_t_for 
+#ifdef _OPENMP
+	#if _OPENMP < 20080101 /* OpenMP < 3.0 */
+		#define size_t_for size_t
+	#else
+		#define size_t_for
+	#endif
 #else
 	#define size_t_for size_t
 #endif
@@ -78,8 +81,10 @@ void pgd_iteration(double *A, double *B, double *Xr, size_t *Xr_indptr, size_t *
 	int k_int = (int) k;
 	size_t nnz_this;
 
-	#ifdef _MSC_VER
-	size_t ia;
+	#ifdef _OPENMP
+		#if _OPENMP < 20080101 /* OpenMP < 3.0 */
+			size_t ia;
+		#endif
 	#endif
 
 	#pragma omp parallel for schedule(dynamic) num_threads(ncores) shared(A) private(nnz_this) firstprivate(B, k, k_int, nnz, cnst_sum, cnst_div, npass, Xr, Xr_indptr, Xr_indices)
