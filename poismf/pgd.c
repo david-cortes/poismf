@@ -7,6 +7,7 @@
  Copyright David Cortes 2018 */
 
 #include <string.h>
+#include <stdio.h>
 #include "findblas.h" /* https://github.com/david-cortes/findblas */
 
 /* Aliasing for compiler optimizations */
@@ -48,7 +49,7 @@ void sum_by_cols(double *restrict out, double *restrict M, size_t nrow, size_t n
 
 	#if !defined(_MSC_VER) && _OPENMP>20080101 /* OpenMP >= 3.0 */
 	/* DAMN YOU MS, WHY WON'T YOU SUPPORT SUCH BASIC FUNCTIONALITY!!! */
-	#pragma omp parallel for schedule(static) num_threads(ncores) firstprivate(nrow, ncol, M) reduction(+:out[:ncol])
+	#pragma omp parallel for schedule(static, nrow/ncores) num_threads(ncores) firstprivate(nrow, ncol, M) reduction(+:out[:ncol])
 	#endif
 	for (size_t row = 0; row < nrow; row++){
 		for (size_t col = 0; col < ncol; col++){
@@ -132,7 +133,19 @@ void run_poismf(
 	#pragma omp parallel
 	{
 		buffer_arr = (double*) malloc(sizeof(double) * k);
+		if (buffer_arr == NULL)
+		{
+			#pragma omp critical
+			fprintf(stderr, "Error: Could not allocate memory for the procedure.\n");
+			goto cleanup;
+		}
 	}
+	
+	if (cnst_sum == NULL{
+		fprintf(stderr, "Error: Could not allocate memory for the procedure.\n");
+		goto cleanup;
+	}
+
 	double cnst_div;
 	int k_int = (int) k;
 	double neg_step_sz = -step_size;
@@ -159,9 +172,10 @@ void run_poismf(
 
 	}
 
-	free(cnst_sum);
-	#pragma omp parallel
-	{
-		free(buffer_arr);
-	}
+	cleanup:
+		free(cnst_sum);
+		#pragma omp parallel
+		{
+			free(buffer_arr);
+		}
 }
