@@ -6,6 +6,7 @@
 
  Copyright David Cortes 2018 */
 
+#include <stdbool.h>
 #include <string.h>
 #include <stdio.h>
 #include "findblas.h" /* https://github.com/david-cortes/findblas */
@@ -130,18 +131,17 @@ void run_poismf(
 {
 
 	double *cnst_sum = (double*) malloc(sizeof(double) * k);
+	bool buffer_alloc_error = false;
 	#pragma omp parallel
 	{
 		buffer_arr = (double*) malloc(sizeof(double) * k);
-		if (buffer_arr == NULL)
-		{
-			#pragma omp critical
-			fprintf(stderr, "Error: Could not allocate memory for the procedure.\n");
-			goto cleanup;
+		if (buffer_arr == NULL) {
+			buffer_alloc_error = true;
 		}
 	}
-	
-	if (cnst_sum == NULL{
+
+	#pragma omp barrier
+	if (buffer_alloc_error || cnst_sum == NULL) {
 		fprintf(stderr, "Error: Could not allocate memory for the procedure.\n");
 		goto cleanup;
 	}
