@@ -5,14 +5,16 @@ Very fast and memory-efficient non-negative matrix factorization for sparse data
 
 The model is similar to [Hierarchical Poisson Factorization](https://arxiv.org/abs/1311.1704), but uses regularization instead of a bayesian hierarchical structure, and is fit through proximal gradient descent instead of variational inference, resulting in a procedure that, for larger datasets, can be more than 400x faster than HPF, and 15x faster than implicit-ALS as implemented in the package [implicit](https://github.com/benfred/implicit).
 
+(Alternatively, can also use L1 regularization or a mixture of L1 and L2, and use a conjugate gradient method instead of proximal gradient, which is slower but less likely to fail)
+
 At the moment it does not have a complete API, only a function to optimize the user/item factor matrices in-place - a similar API to [hpfrec](https://www.github.com/david-cortes/hpfrec) will come in the future.
 
-The implementation is in C with a Python interface. Parallelization is through OpenMP.
+The implementation is in C with a Python interface (R interface to come in the future). Parallelization is through OpenMP.
 
 ![image](tables/rr_table.png "retailrocket")
 ![image](tables/ms_table.png "millionsong")
 
-(_Statistics benchmarked on a Skylake server using 16 cores_)
+(_Statistics benchmarked on a Skylake server using 16 cores with proximal gradient method_)
 
 # Installation
 
@@ -23,7 +25,7 @@ git clone https://github.com/david-cortes/poismf.git
 cd poismf
 python setup.py install
 ```
-(Note that it requires package `findblas`, can be installed with `pip install findblas`.)
+(Note that it requires packages `nonnegcg` and  `findblas`, can usually be installed with `pip install nonnegcg findblas`, but sometimes in Windows depending on `numpy` version, `nonnegcg` might have to be installed through `setup.py install` from [here](https://www.github.com/david-cortes/nonneg_cg).)
 
 Requires some BLAS library such as MKL (comes by default in Anaconda) or OpenBLAS - will attempt to use the same as NumPy is using. Also requires a C compiler such as GCC or Visual Studio.
 
@@ -61,32 +63,35 @@ run_pgd(X, A, B, ncores=1) ## adjust the number of threads/cores accordingly for
 ## Matrices A and B are optimized in-place
 
 ## Full call
-run_pgd(X, A, B, reg_param=1e9, step_size=1e-7, niter=10, npass=1, ncores=1)
+run_pgd(X, A, B, use_cg=False, l2_reg=1e9, l1_reg=0, step_size=1e-7, niter=10, npass=1, ncores=1)
+
+## Note: for conjugate gradient, increase 'npass' and decrease 'l2_reg'
 
 ## Making predictions
 ## Predict count of item 10 for user 25
 np.dot(A[25], B[10])
 
 
-### Be sure to check that your A and B matrices don't turn to NaNs to Zeros!!
+### Be sure to check that your A and B matrices don't turn to NaNs or Zeros!!
 ```
 
 You can also take the C file `poismf/pgd.c` and use it in some language other than Python - works with a copy of `X` in row-sparse and another in column-sparse formats.
 
 ```c
-/* Main function
+/* Main function for Proximal Gradient and Conjugate Gradient solvers
 	A                           : Pointer to the already-initialized A matrix (user-factor)
 	Xr, Xr_indptr, Xr_indices   : Pointers to the X matrix in row-sparse format
 	B                           : Pointer to the already-initialized B matrix (item-factor)
 	Xc, Xc_indptr, Xc_indices   : Pointers to the X matrix in column-sparse format
 	dimA                        : Number of rows in the A matrix
 	dimB                        : Number of rows in the B matrix
-	nnz                         : Number of non-zero elements in the X matrix
 	k                           : Dimensionality for the factorizing matrices (number of columns of A and B matrices)
-	reg_param                   : Regularization pameter for the L2 norm of the A and B matrices
-	step_size                   : Initial step size for PGD updates (will be decreased by 1/2 every iteration)
+	l2_reg                      : Regularization pameter for the L2 norm of the A and B matrices
+	l1_reg                      : Regularization pameter for the L1 norm of the A and B matrices
+	use_cg                      : Whether to use a Conjugate-Gradient solver instead of Proximal-Gradient.
+	step_size                   : Initial step size for PGD updates (will be decreased by 1/2 every iteration - ignored for CG)
 	numiter                     : Number of iterations for which to run the procedure
-	npass                       : Number of updates to the same matrix per iteration
+	npass                       : Number of updates to the same matrix per iteration (pass >1 for CG)
 	ncores                      : Number of threads to use
 Matrices A and B are optimized in-place.
 Function does not have a return value.
@@ -94,7 +99,7 @@ Function does not have a return value.
 void run_poismf(
 	double *restrict A, double *restrict Xr, size_t *restrict Xr_indptr, size_t *restrict Xr_indices,
 	double *restrict B, double *restrict Xc, size_t *restrict Xc_indptr, size_t *restrict Xc_indices,
-	const size_t dimA, const size_t dimB, const size_t nnz, const size_t k,
-	const double reg_param, double step_size,
+	const size_t dimA, const size_t dimB, const size_t k,
+	const double l2_reg, const double l1_reg, const int use_cg, double step_size,
 	const size_t numiter, const size_t npass, const int ncores)
 ```
