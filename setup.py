@@ -42,18 +42,6 @@ if ptf.system() == "Windows":
     link_args = [os.path.join(nncg_lib_dir, nncg_lib_file)]
 else:
     link_args = ["-L" + nncg_lib_dir, "-l:" + nncg_lib_file]
-    # link_args = ["-L" + nncg_lib_dir, "-l:nonnegcg"]
-    # link_args = ["-L" + nncg_lib_dir, "-l:" + os.path.join(nncg_lib_dir, nncg_lib_file)]
-    # link_args = ["-L" + nncg_lib_dir, "-l" + re.sub(lib_ext_regex, "", nncg_lib_file)]
-    # link_args = ["-l:" + os.path.join(nncg_lib_dir, nncg_lib_file)]
-    # link_args = ["-L" + nncg_lib_dir, "-l:" + nncg_lib_file]
-    # link_args = ["-L" + nncg_lib_dir, "-l:" + re.sub(lib_ext_regex, "", nncg_lib_file)]
-    # link_args = ["-L" + nncg_lib_dir, "-l:" + re.sub(r"^.*\W(nonnegcg.+\.\w+)$", r"\1", nncg_lib_file)]
-
-print("this is file:", nncg_lib_file)
-print("this is dir:", nncg_lib_dir)
-print("this is include dir:", nncg_inc_path)
-print("this is link args:", link_args)
 
 
 setup(
@@ -67,14 +55,3 @@ setup(
         runtime_library_dirs = [nncg_lib_dir]
         )]
     )
-
-# setup(
-#     name  = "poismf",
-#     packages = ["poismf"],
-#     author = 'David Cortes',
-#     url = 'https://github.com/david-cortes/poismf',
-#     cmdclass = {'build_ext': build_ext_subclass},
-#     ext_modules = [Extension("poismf", sources=["poismf/pmf.pyx"], extra_link_args = link_args,
-#         include_dirs=[numpy.get_include(), nncg_inc_path, nncg_lib_dir], runtime_library_dirs = [nncg_lib_dir]
-#         )]
-#     )
