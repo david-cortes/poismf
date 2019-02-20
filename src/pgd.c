@@ -35,14 +35,41 @@
 
 #include <stdbool.h>
 #include <string.h>
+#include <math.h>
 #ifndef _FOR_R
 	#include <stdio.h>
-#else
-	#include <R_ext/Print.h>
-	#define fprintf(f, message) REprintf(message)
 #endif
 #include <stddef.h>
-#include "nonnegcg.h" /* https://www.github.com/david-cortes/nonneg_cg */
+#ifndef _FOR_R
+	#include "nonnegcg.h" /* https://www.github.com/david-cortes/nonneg_cg */
+#else
+	#include <Rinternals.h>
+	#include <R.h>
+	#include <R_ext/Rdynload.h>
+	#include <R_ext/Print.h>
+	#define fprintf(f, message) REprintf(message)
+	typedef void fun_eval(double x[], int n, double *f, void *data);
+	typedef void grad_eval(double x[], int n, double grad[], void *data);
+	typedef void callback(double x[], int n, double f, size_t iter, void *data);
+	typedef int (*signature_nonneg_cg)(double x[], int n, double *fun_val,
+		fun_eval *obj_fun, grad_eval *grad_fun, callback *cb, void *data,
+		double tol, size_t maxnfeval, size_t maxiter, size_t *niter, size_t *nfeval,
+		double decr_lnsrch, double lnsrch_const, size_t max_ls,
+		int extra_nonneg_tol, double *buffer_arr, int nthreads, int verbose);
+	int minimize_nonneg_cg(double x[], int n, double *fun_val,
+		fun_eval *obj_fun, grad_eval *grad_fun, callback *cb, void *data,
+		double tol, size_t maxnfeval, size_t maxiter, size_t *niter, size_t *nfeval,
+		double decr_lnsrch, double lnsrch_const, size_t max_ls,
+		int extra_nonneg_tol, double *buffer_arr, int nthreads, int verbose) {
+			signature_nonneg_cg fun = NULL;
+			fun = (signature_nonneg_cg) R_GetCCallable("nonneg.cg","minimize_nonneg_cg");
+			return fun(x, n, fun_val,
+				obj_fun, grad_fun, cb, data,
+				tol, maxnfeval, maxiter, niter, nfeval,
+				decr_lnsrch, lnsrch_const, max_ls,
+				extra_nonneg_tol, buffer_arr, nthreads, verbose);
+	}
+#endif
 
 /* BLAS functions */
 #ifdef _FOR_PYTON
@@ -53,14 +80,18 @@
 	void cblas_daxpy(int n, double a, double *x, int incx, double *y, int incy) { daxpy_(&n, &a, x, &incx, y, &incy); }
 	void cblas_dscal(int n, double alpha, double *x, int incx) { dscal_(&n, &alpha, x, &incx); }
 #else
+	double cblas_ddot(const int n, const double *x, const int incx, const double *y, const int incy);
+	void cblas_daxpy(const int n, const double alpha, const double *x, const int incx, double *y, const int incy);
+	void cblas_dscal(const int N, const double alpha, double *X, const int incX);
+
 	#ifndef cblas_ddot
-		double cblas_ddot(int n, double *x, int incx, double *y, int incy) {
+		double cblas_ddot(const int n, const double *x, const int incx, const double *y, const int incy) {
 			double out = 0;
 			for (int i = 0; i < n; i++) { out += x[i] * y[i]; }
 			return out;
 		}
-		void cblas_daxpy(int n, double a, double *x, int incx, double *y, int incy) { for (int i = 0; i < n; i++) { y[i] += a * x[i]; } }
-		void cblas_dscal(int n, double alpha, double *x, int incx) { for (int i = 0; i < n; i++) { x[i] *= alpha; } }
+		void cblas_daxpy(const int n, const double alpha, const double *x, const int incx, double *y, const int incy) { for (int i = 0; i < n; i++) { y[i] += alpha * x[i]; } }
+		void cblas_dscal(const int N, const double alpha, double *X, const int incX) { for (int i = 0; i < N; i++) { X[i] *= alpha; } }
 	#endif
 #endif
 
@@ -87,7 +118,7 @@
 #endif
 
 /* Helper functions */
-#define nonneg(x) (x >= 0)? x : 0
+#define nonneg(x) (x > 0)? x : 0
 
 void sum_by_cols(double *restrict out, double *restrict M, size_t nrow, size_t ncol, int ncores)
 {
@@ -201,7 +232,6 @@ void optimize_cg_single(double curr[], double X[], size_t X_ind[], size_t nnz_th
 		1e-1, 200, 100, &niter, &nfeval,
 		0.25, 0.01, 20,
 		1, NULL, 1, 0);
-	for (size_t i = 0; i < k; i++) {curr[i] = nonneg(curr[i]);}
 }
 
 void cg_iteration(double *A, double *B, double *Xr, size_t *Xr_indptr, size_t *Xr_indices, size_t dimA, size_t k,
@@ -233,7 +263,6 @@ void cg_iteration(double *A, double *B, double *Xr, size_t *Xr_indptr, size_t *X
 			1e-3, npass, 100, &niter, &nfeval,
 			0.25, 0.01, 20,
 			1, buffer_arr, 1, 0);
-		for (size_t i = 0; i < k; i++) {A[ia*k + i] = nonneg(A[ia*k + i]);}
 	}
 }
 

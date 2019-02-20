@@ -3,7 +3,7 @@ cimport numpy as np
 import ctypes
 from scipy.sparse import coo_matrix, csr_matrix, csc_matrix
 
-cdef extern from "pgd.c":
+cdef extern from "../src/pgd.c":
 	void run_poismf(
 		double *A, double *Xr, size_t *Xr_indptr, size_t *Xr_indices,
 		double *B, double *Xc, size_t *Xc_indptr, size_t *Xc_indices,

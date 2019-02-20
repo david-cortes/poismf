@@ -7,9 +7,9 @@ The model is similar to [Hierarchical Poisson Factorization](https://arxiv.org/a
 
 (Alternatively, can also use L1 regularization or a mixture of L1 and L2, and use a conjugate gradient method instead of proximal gradient, which is slower but less likely to fail)
 
-At the moment it does not have a complete API, only a function to optimize the user/item factor matrices in-place - a similar API to [hpfrec](https://www.github.com/david-cortes/hpfrec) will come in the future.
+At the moment it does not have a complete API, only a function to optimize the user/item factor matrices in-place - a similar API to [hpfrec](https://www.github.com/david-cortes/hpfrec) will come in the future. The R version has some basic `predict` functionality though.
 
-The implementation is in C with a Python interface (R interface to come in the future). Parallelization is through OpenMP.
+The implementation is in C with interfaces for Python and R. Parallelization is through OpenMP.
 
 ![image](tables/rr_table.png "retailrocket")
 ![image](tables/ms_table.png "millionsong")
@@ -17,6 +17,8 @@ The implementation is in C with a Python interface (R interface to come in the f
 (_Statistics benchmarked on a Skylake server using 16 cores with proximal gradient method_)
 
 # Installation
+
+* Python
 
 Clone or download the repository and then install with `setup.py`, e.g.:
 
@@ -31,7 +33,25 @@ Requires some BLAS library such as MKL (comes by default in Anaconda) or OpenBLA
 
 For any installation problems, please open an issue in GitHub providing information about your system (OS, BLAS, C compiler) and Python installation.
 
+* R
+
+Requires package [nonneg.cg](https://www.github.com/david-cortes/nonneg_cg) as dependency, can be installed with:
+```r
+devtools::install_github("david-cortes/nonneg_cg")
+```
+
+After that, install this package with:
+```r
+devtools::install_github("david-cortes/poismf")
+```
+
 # Usage
+
+* R
+
+See the documentation for usage examples `help(poismf::poismf)`.
+
+* Python
 
 In rough terms, you'll need to first initialize the user-factor and item-factor matrices yourself randomly (e.g. `~ Gamma(1,1)` or `~ Uniform(0,1)`), then run the optimization routine on them, passing the observed data in sparse coordinate format:
 
@@ -75,7 +95,7 @@ np.dot(A[25], B[10])
 ### Be sure to check that your A and B matrices don't turn to NaNs or Zeros!!
 ```
 
-You can also take the C file `poismf/pgd.c` and use it in some language other than Python - works with a copy of `X` in row-sparse and another in column-sparse formats.
+You can also take the C file `poismf/pgd.c` and use it in some language other than Python or R - works with a copy of `X` in row-sparse and another in column-sparse formats.
 
 ```c
 /* Main function for Proximal Gradient and Conjugate Gradient solvers
