@@ -38,7 +38,9 @@
 #' predict(model, 1, 10) ## predict entry (1, 10)
 #' predict(model, c(1, 1, 1), c(4, 5, 6)) ## predict entries [1,4], [1,5], [1,6]
 #' head(predict(model, 1)) ## predict the whole row 1
-#' head(predict( data.frame(col_ix = c(1,2,3), count = c(4,5,6)) )) #all predictions for new row/user/doc
+#' 
+#' #all predictions for new row/user/doc
+#' head(predict(model, data.frame(col_ix = c(1,2,3), count = c(4,5,6)) ))
 poismf <- function(X, k = 50, l1_reg = 0, l2_reg = 1e9, niter = 10, nupd = 1, step_size = 1e-7,
 				   solver = "pg", init_type = "gamma", seed = 1, nthreads = -1) {
 	
@@ -165,7 +167,7 @@ poismf <- function(X, k = 50, l1_reg = 0, l2_reg = 1e9, niter = 10, nupd = 1, st
 	)
 	if (is_non_int) {
 		out[["levels_A"]] <- levels_A
-		out[["levels_B"]] <- levles_B
+		out[["levels_B"]] <- levels_B
 	}
 	return(structure(out, class = "poismf"))
 }
@@ -197,7 +199,9 @@ poismf <- function(X, k = 50, l1_reg = 0, l2_reg = 1e9, niter = 10, nupd = 1, st
 #' predict(model, 1, 10) ## predict entry (1, 10)
 #' predict(model, c(1, 1, 1), c(4, 5, 6)) ## predict entries [1,4], [1,5], [1,6]
 #' head(predict(model, 1)) ## predict the whole row 1
-#' head(predict( data.frame(col_ix = c(1,2,3), count = c(4,5,6)) )) #all predictions for new row/user/doc
+#' 
+#' #all predictions for new row/user/doc
+#' head(predict(model, data.frame(col_ix = c(1,2,3), count = c(4,5,6)) ))
 predict.poismf <- function(object, a, b = NULL, seed = 10, ...) {
 	
 	class_a <- class(a)
@@ -240,7 +244,7 @@ predict.poismf <- function(object, a, b = NULL, seed = 10, ...) {
 	if (!is.null(x_vec)) {
 		set.seed(seed)
 		if (object$init_type == "gamma") {
-			a_vec <- rgamma(object$k)
+			a_vec <- rgamma(object$k, 1)
 		} else {
 			a_vec <- runif(object$k)
 		}

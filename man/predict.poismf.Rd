@@ -39,7 +39,9 @@ model <- poismf(X, nthreads = 1)
 predict(model, 1, 10) ## predict entry (1, 10)
 predict(model, c(1, 1, 1), c(4, 5, 6)) ## predict entries [1,4], [1,5], [1,6]
 head(predict(model, 1)) ## predict the whole row 1
-head(predict( data.frame(col_ix = c(1,2,3), count = c(4,5,6)) )) #all predictions for new row/user/doc
+
+#all predictions for new row/user/doc
+head(predict(model, data.frame(col_ix = c(1,2,3), count = c(4,5,6)) ))
 }
 \seealso{
 \link{poismf}

@@ -1,3 +1,4 @@
+importFrom("methods", "as")
 importFrom(Rcpp, evalCpp)
 importFrom("utils", "head")
 importFrom("stats", "runif", "rgamma", "rpois")
