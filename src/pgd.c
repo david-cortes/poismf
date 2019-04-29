@@ -117,6 +117,18 @@
 	#define size_t_for size_t
 #endif
 
+/* Check if variable-length arrays are supported - this is used for parallelizing
+   sums of columns
+   https://cboard.cprogramming.com/c-programming/176320-vla-pointers-vla-checking-isoc90-isoc11.html
+*/
+#if __STDC_VERSION__ >= 201100L
+	#ifndef _STDC_NO_VLA_
+		#define HAS_VLA
+	#endif
+#elif __STDC_VERSION__ >= 199900L
+	#define HAS_VLA
+#endif
+
 /* Helper functions */
 #define nonneg(x) (x > 0)? x : 0
 
@@ -124,7 +136,7 @@ void sum_by_cols(double *restrict out, double *restrict M, size_t nrow, size_t n
 {
 	memset(out, 0, sizeof(double) * ncol);
 
-	#if !defined(_MSC_VER) && _OPENMP>20080101 /* OpenMP >= 3.0 */
+	#if !defined(_MSC_VER) && defined(HAS_VLA) && _OPENMP>20080101 /* OpenMP >= 3.0 */
 	/* DAMN YOU MS, WHY WON'T YOU SUPPORT SUCH BASIC FUNCTIONALITY!!! */
 	#pragma omp parallel for schedule(static, nrow/ncores) num_threads(ncores) firstprivate(nrow, ncol, M) reduction(+:out[:ncol])
 	#endif
