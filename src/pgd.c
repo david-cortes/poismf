@@ -108,7 +108,7 @@
    which doesn't support parallel loops with unsigned iterators,
    and doesn't support declaring a for-loop iterator in the loop itself. */
 #ifdef _OPENMP
-	#if _OPENMP < 20080101 /* OpenMP < 3.0 */
+	#if _OPENMP < 200801 /* OpenMP < 3.0 */
 		#define size_t_for size_t
 	#else
 		#define size_t_for
@@ -136,7 +136,7 @@ void sum_by_cols(double *restrict out, double *restrict M, size_t nrow, size_t n
 {
 	memset(out, 0, sizeof(double) * ncol);
 
-	#if !defined(_MSC_VER) && defined(HAS_VLA) && _OPENMP>20080101 /* OpenMP >= 3.0 */
+	#if !defined(_MSC_VER) && defined(HAS_VLA) && _OPENMP>200801 /* OpenMP >= 3.0 */
 	/* DAMN YOU MS, WHY WON'T YOU SUPPORT SUCH BASIC FUNCTIONALITY!!! */
 	#pragma omp parallel for schedule(static, nrow/ncores) num_threads(ncores) firstprivate(nrow, ncol, M) reduction(+:out[:ncol])
 	#endif
@@ -172,7 +172,7 @@ void pgd_iteration(double *A, double *B, double *Xr, size_t *Xr_indptr, size_t *
 	size_t nnz_this;
 
 	#ifdef _OPENMP
-		#if _OPENMP < 20080101 /* OpenMP < 3.0 */
+		#if _OPENMP < 200801 /* OpenMP < 3.0 */
 			long ia;
 		#endif
 	#endif
@@ -252,7 +252,7 @@ void cg_iteration(double *A, double *B, double *Xr, size_t *Xr_indptr, size_t *X
 
 	int k_int = (int) k;
 	#ifdef _OPENMP
-		#if _OPENMP < 20080101 /* OpenMP < 3.0 */
+		#if _OPENMP < 200801 /* OpenMP < 3.0 */
 			long ia;
 		#endif
 	#endif
