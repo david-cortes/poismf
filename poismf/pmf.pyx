@@ -2,6 +2,7 @@ import numpy as np
 cimport numpy as np
 import ctypes
 from scipy.sparse import coo_matrix, csr_matrix, csc_matrix
+from sys import platform
 
 cdef extern from "../src/pgd.c":
 	void run_poismf(
@@ -12,6 +13,9 @@ cdef extern from "../src/pgd.c":
 		size_t numiter, size_t npass, int ncores)
 
 def run_pgd(Xcoo, np.ndarray[double, ndim=2] A, np.ndarray[double, ndim=2] B, int use_cg=0, double l2_reg=1e9, double l1_reg=0, double step_size=1e-7, size_t niter=10, size_t npass=1, int ncores=1):
+
+	if use_cg and (platform[:3] == "win"):
+		raise ValueError("CG method not available in Windows OS.")
 
 	Xcsr = csr_matrix(Xcoo)
 	Xcsc = csc_matrix(Xcoo)

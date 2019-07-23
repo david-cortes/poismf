@@ -40,35 +40,37 @@
 	#include <stdio.h>
 #endif
 #include <stddef.h>
-#ifndef _FOR_R
-	#include "nonnegcg.h" /* https://www.github.com/david-cortes/nonneg_cg */
-#else
-	#include <Rinternals.h>
-	#include <R.h>
-	#include <R_ext/Rdynload.h>
-	#include <R_ext/Print.h>
-	#define fprintf(f, message) REprintf(message)
-	typedef void fun_eval(double x[], int n, double *f, void *data);
-	typedef void grad_eval(double x[], int n, double grad[], void *data);
-	typedef void callback(double x[], int n, double f, size_t iter, void *data);
-	typedef int (*signature_nonneg_cg)(double x[], int n, double *fun_val,
-		fun_eval *obj_fun, grad_eval *grad_fun, callback *cb, void *data,
-		double tol, size_t maxnfeval, size_t maxiter, size_t *niter, size_t *nfeval,
-		double decr_lnsrch, double lnsrch_const, size_t max_ls,
-		int extra_nonneg_tol, double *buffer_arr, int nthreads, int verbose);
-	int minimize_nonneg_cg(double x[], int n, double *fun_val,
-		fun_eval *obj_fun, grad_eval *grad_fun, callback *cb, void *data,
-		double tol, size_t maxnfeval, size_t maxiter, size_t *niter, size_t *nfeval,
-		double decr_lnsrch, double lnsrch_const, size_t max_ls,
-		int extra_nonneg_tol, double *buffer_arr, int nthreads, int verbose) {
-			signature_nonneg_cg fun = NULL;
-			fun = (signature_nonneg_cg) R_GetCCallable("nonneg.cg","minimize_nonneg_cg");
-			return fun(x, n, fun_val,
-				obj_fun, grad_fun, cb, data,
-				tol, maxnfeval, maxiter, niter, nfeval,
-				decr_lnsrch, lnsrch_const, max_ls,
-				extra_nonneg_tol, buffer_arr, nthreads, verbose);
-	}
+#if !defined(_WIN32) && !defined(_WIN64)
+	#ifndef _FOR_R
+		#include "nonnegcg.h" /* https://www.github.com/david-cortes/nonneg_cg */
+	#else
+		#include <Rinternals.h>
+		#include <R.h>
+		#include <R_ext/Rdynload.h>
+		#include <R_ext/Print.h>
+		#define fprintf(f, message) REprintf(message)
+		typedef void fun_eval(double x[], int n, double *f, void *data);
+		typedef void grad_eval(double x[], int n, double grad[], void *data);
+		typedef void callback(double x[], int n, double f, size_t iter, void *data);
+		typedef int (*signature_nonneg_cg)(double x[], int n, double *fun_val,
+			fun_eval *obj_fun, grad_eval *grad_fun, callback *cb, void *data,
+			double tol, size_t maxnfeval, size_t maxiter, size_t *niter, size_t *nfeval,
+			double decr_lnsrch, double lnsrch_const, size_t max_ls,
+			int extra_nonneg_tol, double *buffer_arr, int nthreads, int verbose);
+		int minimize_nonneg_cg(double x[], int n, double *fun_val,
+			fun_eval *obj_fun, grad_eval *grad_fun, callback *cb, void *data,
+			double tol, size_t maxnfeval, size_t maxiter, size_t *niter, size_t *nfeval,
+			double decr_lnsrch, double lnsrch_const, size_t max_ls,
+			int extra_nonneg_tol, double *buffer_arr, int nthreads, int verbose) {
+				signature_nonneg_cg fun = NULL;
+				fun = (signature_nonneg_cg) R_GetCCallable("nonneg.cg","minimize_nonneg_cg");
+				return fun(x, n, fun_val,
+					obj_fun, grad_fun, cb, data,
+					tol, maxnfeval, maxiter, niter, nfeval,
+					decr_lnsrch, lnsrch_const, max_ls,
+					extra_nonneg_tol, buffer_arr, nthreads, verbose);
+		}
+	#endif
 #endif
 
 /* BLAS functions */
@@ -99,6 +101,8 @@
 #ifndef restrict
 	#ifdef __restrict
 		#define restrict __restrict
+	#elif defined(__restrict__)
+		#define restrict __restrict__
 	#else
 		#define restrict
 	#endif
@@ -109,9 +113,9 @@
    and doesn't support declaring a for-loop iterator in the loop itself. */
 #ifdef _OPENMP
 	#if _OPENMP < 200801 /* OpenMP < 3.0 */
-		#define size_t_for size_t
+		#define size_t_for 
 	#else
-		#define size_t_for
+		#define size_t_for size_t
 	#endif
 #else
 	#define size_t_for size_t
@@ -136,9 +140,9 @@ void sum_by_cols(double *restrict out, double *restrict M, size_t nrow, size_t n
 {
 	memset(out, 0, sizeof(double) * ncol);
 
-	#if !defined(_MSC_VER) && defined(HAS_VLA) && _OPENMP>200801 /* OpenMP >= 3.0 */
+	#if !defined(_MSC_VER) && defined(HAS_VLA) && (_OPENMP > 200801) /* OpenMP >= 3.0 */
 	/* DAMN YOU MS, WHY WON'T YOU SUPPORT SUCH BASIC FUNCTIONALITY!!! */
-	#pragma omp parallel for schedule(static, nrow/ncores) num_threads(ncores) firstprivate(nrow, ncol, M) reduction(+:out[:ncol])
+	#pragma omp parallel for if(ncol <= 100) schedule(static, nrow/ncores) num_threads(ncores) firstprivate(nrow, ncol, M) reduction(+:out[:ncol])
 	#endif
 	for (size_t row = 0; row < nrow; row++){
 		for (size_t col = 0; col < ncol; col++){
@@ -172,7 +176,7 @@ void pgd_iteration(double *A, double *B, double *Xr, size_t *Xr_indptr, size_t *
 	size_t nnz_this;
 
 	#ifdef _OPENMP
-		#if _OPENMP < 200801 /* OpenMP < 3.0 */
+		#if (_OPENMP < 200801) /* OpenMP < 3.0 */
 			long ia;
 		#endif
 	#endif
@@ -195,6 +199,7 @@ void pgd_iteration(double *A, double *B, double *Xr, size_t *Xr_indptr, size_t *
 	}
 }
 
+#if !defined(_WIN32) && !defined(_WIN64)
 /* Functions and structs for Conjugate Gradient - these are used with package nonneg_cg */
 typedef struct fdata {
 	double *F;
@@ -251,11 +256,6 @@ void cg_iteration(double *A, double *B, double *Xr, size_t *Xr_indptr, size_t *X
 {
 
 	int k_int = (int) k;
-	#ifdef _OPENMP
-		#if _OPENMP < 200801 /* OpenMP < 3.0 */
-			long ia;
-		#endif
-	#endif
 
 	fdata data = { B, Bsum, NULL, NULL, 0, l2_reg };
 	double fun_val;
@@ -277,6 +277,7 @@ void cg_iteration(double *A, double *B, double *Xr, size_t *Xr_indptr, size_t *X
 			1, buffer_arr, 1, 0);
 	}
 }
+#endif
 
 
 /* Main function for Proximal Gradient and Conjugate Gradient solvers
@@ -343,28 +344,36 @@ void run_poismf(
 		sum_by_cols(cnst_sum, B, dimB, k, ncores);
 		if (l1_reg > 0) { for (size_t kk = 0; kk < k; kk++) { cnst_sum[kk] += l1_reg; } }
 
+		#if !defined(_WIN32) && !defined(_WIN64)
 		if (use_cg) {
 			cg_iteration(A, B, Xr, Xr_indptr, Xr_indices, dimA, k, cnst_sum, npass, l2_reg, ncores);
 		} else {
+		#endif
 			cblas_dscal(k_int, neg_step_sz, cnst_sum, 1);
 			pgd_iteration(A, B, Xr, Xr_indptr, Xr_indices, dimA, k, cnst_div, cnst_sum, step_size, npass, ncores);
+		#if !defined(_WIN32) && !defined(_WIN64)
 		}
+		#endif
 
 
 		/* Same procedure repeated for the B matrix */
 		sum_by_cols(cnst_sum, A, dimA, k, ncores);
 		if (l1_reg > 0) { for (size_t kk = 0; kk < k; kk++) { cnst_sum[kk] += l1_reg; } }
 
+		#if !defined(_WIN32) && !defined(_WIN64)
 		if (use_cg) {
 			cg_iteration(B, A, Xr, Xc_indptr, Xc_indices, dimB, k, cnst_sum, npass, l2_reg, ncores);
 		} else {
+		#endif
 			cblas_dscal(k_int, neg_step_sz, cnst_sum, 1);
 			pgd_iteration(B, A, Xc, Xc_indptr, Xc_indices, dimB, k, cnst_div, cnst_sum, step_size, npass, ncores);
 
 			/* Decrease step size after taking PGD steps in both matrices */
 			step_size *= 0.5;
 			neg_step_sz = -step_size;
+		#if !defined(_WIN32) && !defined(_WIN64)
 		}
+		#endif
 
 	}
 
