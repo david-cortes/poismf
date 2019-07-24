@@ -34,22 +34,11 @@ Requires some BLAS library such as MKL (comes by default in Anaconda) or OpenBLA
 For any installation problems, please open an issue in GitHub providing information about your system (OS, BLAS, C compiler) and Python installation.
 
 * R
-
-Requires package [nonneg.cg](https://www.github.com/david-cortes/nonneg_cg) as dependency, can be installed with:
-```r
-intall.packages("nonneg.cg")
-```
-
-After that, install this package with:
 ```r
 devtools::install_github("david-cortes/poismf")
 ```
 
 # Usage
-
-* R
-
-See the documentation for usage examples `help(poismf::poismf)`.
 
 * Python
 
@@ -94,6 +83,30 @@ np.dot(A[25], B[10])
 
 ### Be sure to check that your A and B matrices don't turn to NaNs or Zeros!!
 ```
+
+* R
+
+```r
+library(poismf)
+
+nrow <- 10 ** 2
+ncol <- 10 ** 3
+nnz <- 10 ** 4
+set.seed(1)
+X <- data.frame(
+    row_ix = as.integer(runif(nnz, min = 1, max = nrow)),
+    col_ix = as.integer(runif(nnz, min = 1, max = ncol)),
+    count = rpois(nnz, 1) + 1)
+X <- X[!duplicated(X[, c("row_ix", "col_ix")]), ]
+model <- poismf(X, nthreads = 1)
+predict(model, 1, 10) ## predict entry (1, 10)
+predict(model, c(1, 1, 1), c(4, 5, 6)) ## predict entries [1,4], [1,5], [1,6]
+head(predict(model, 1)) ## predict the whole row 1
+
+#all predictions for new row/user/doc
+head(predict(model, data.frame(col_ix = c(1,2,3), count = c(4,5,6)) ))
+```
+(Can also work with sparse matrices instead of data frames)
 
 You can also take the C file `poismf/pgd.c` and use it in some language other than Python or R - works with a copy of `X` in row-sparse and another in column-sparse formats.
 
