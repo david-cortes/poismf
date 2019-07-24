@@ -10,7 +10,6 @@ Description: Creates a low-rank factorization of a sparse counts matrix by maxim
 	Similar to Hierarchical Poisson Factorization, but follows an optimization-based approach with regularization instead of a hierarchical
 	structure, and is fit through either proximal gradient or conjugate gradient instead of variational inference.
 License: BSD_2_clause + file LICENSE
-Imports: Rcpp (>= 0.12.19), Matrix, SparseM, methods
-Depends: nonneg.cg
+Imports: Rcpp (>= 0.12.19), Matrix, SparseM, methods, nonneg.cg
 LinkingTo: Rcpp
 RoxygenNote: 6.1.1

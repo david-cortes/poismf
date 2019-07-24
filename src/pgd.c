@@ -143,9 +143,11 @@ void sum_by_cols(double *restrict out, double *restrict M, size_t nrow, size_t n
 {
 	memset(out, 0, sizeof(double) * ncol);
 
+	#if !(defined(_FOR_R) && (defined(_WIN32) || defined(_WIN64)))
 	#if !defined(_MSC_VER) && defined(HAS_VLA) && (_OPENMP > 200801) /* OpenMP >= 3.0 */
 	/* DAMN YOU MS, WHY WON'T YOU SUPPORT SUCH BASIC FUNCTIONALITY!!! */
 	#pragma omp parallel for if(ncol <= 100) schedule(static, nrow/ncores) num_threads(ncores) firstprivate(nrow, ncol, M) reduction(+:out[:ncol])
+	#endif
 	#endif
 	for (size_t row = 0; row < nrow; row++){
 		for (size_t col = 0; col < ncol; col++){

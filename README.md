@@ -37,7 +37,7 @@ For any installation problems, please open an issue in GitHub providing informat
 
 Requires package [nonneg.cg](https://www.github.com/david-cortes/nonneg_cg) as dependency, can be installed with:
 ```r
-devtools::install_github("david-cortes/nonneg_cg")
+intall.packages("nonneg.cg")
 ```
 
 After that, install this package with:
