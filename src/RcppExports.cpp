@@ -50,28 +50,50 @@ BEGIN_RCPP
     return R_NilValue;
 END_RCPP
 }
-// factorize_single
-void factorize_single(Rcpp::NumericVector a_vector, Rcpp::NumericVector x, Rcpp::IntegerVector ix, size_t nnz, Rcpp::NumericVector B, Rcpp::NumericVector Bsum, int k, double l2_reg);
-RcppExport SEXP _poismf_factorize_single(SEXP a_vectorSEXP, SEXP xSEXP, SEXP ixSEXP, SEXP nnzSEXP, SEXP BSEXP, SEXP BsumSEXP, SEXP kSEXP, SEXP l2_regSEXP) {
+// calc_fun_single_R
+double calc_fun_single_R(Rcpp::NumericVector x_R, Rcpp::NumericVector X_R, Rcpp::IntegerVector X_ind, int nnz_this, Rcpp::NumericVector F_R, Rcpp::NumericVector Fsum, int n, double l2_reg, Rcpp::NumericVector grad);
+RcppExport SEXP _poismf_calc_fun_single_R(SEXP x_RSEXP, SEXP X_RSEXP, SEXP X_indSEXP, SEXP nnz_thisSEXP, SEXP F_RSEXP, SEXP FsumSEXP, SEXP nSEXP, SEXP l2_regSEXP, SEXP gradSEXP) {
 BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
-    Rcpp::traits::input_parameter< Rcpp::NumericVector >::type a_vector(a_vectorSEXP);
-    Rcpp::traits::input_parameter< Rcpp::NumericVector >::type x(xSEXP);
-    Rcpp::traits::input_parameter< Rcpp::IntegerVector >::type ix(ixSEXP);
-    Rcpp::traits::input_parameter< size_t >::type nnz(nnzSEXP);
-    Rcpp::traits::input_parameter< Rcpp::NumericVector >::type B(BSEXP);
-    Rcpp::traits::input_parameter< Rcpp::NumericVector >::type Bsum(BsumSEXP);
-    Rcpp::traits::input_parameter< int >::type k(kSEXP);
+    Rcpp::traits::input_parameter< Rcpp::NumericVector >::type x_R(x_RSEXP);
+    Rcpp::traits::input_parameter< Rcpp::NumericVector >::type X_R(X_RSEXP);
+    Rcpp::traits::input_parameter< Rcpp::IntegerVector >::type X_ind(X_indSEXP);
+    Rcpp::traits::input_parameter< int >::type nnz_this(nnz_thisSEXP);
+    Rcpp::traits::input_parameter< Rcpp::NumericVector >::type F_R(F_RSEXP);
+    Rcpp::traits::input_parameter< Rcpp::NumericVector >::type Fsum(FsumSEXP);
+    Rcpp::traits::input_parameter< int >::type n(nSEXP);
     Rcpp::traits::input_parameter< double >::type l2_reg(l2_regSEXP);
-    factorize_single(a_vector, x, ix, nnz, B, Bsum, k, l2_reg);
-    return R_NilValue;
+    Rcpp::traits::input_parameter< Rcpp::NumericVector >::type grad(gradSEXP);
+    rcpp_result_gen = Rcpp::wrap(calc_fun_single_R(x_R, X_R, X_ind, nnz_this, F_R, Fsum, n, l2_reg, grad));
+    return rcpp_result_gen;
+END_RCPP
+}
+// calc_grad_single_R
+Rcpp::NumericVector calc_grad_single_R(Rcpp::NumericVector x_R, Rcpp::NumericVector X_R, Rcpp::IntegerVector X_ind, int nnz_this, Rcpp::NumericVector F_R, Rcpp::NumericVector Fsum, int n, double l2_reg, Rcpp::NumericVector grad_R);
+RcppExport SEXP _poismf_calc_grad_single_R(SEXP x_RSEXP, SEXP X_RSEXP, SEXP X_indSEXP, SEXP nnz_thisSEXP, SEXP F_RSEXP, SEXP FsumSEXP, SEXP nSEXP, SEXP l2_regSEXP, SEXP grad_RSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< Rcpp::NumericVector >::type x_R(x_RSEXP);
+    Rcpp::traits::input_parameter< Rcpp::NumericVector >::type X_R(X_RSEXP);
+    Rcpp::traits::input_parameter< Rcpp::IntegerVector >::type X_ind(X_indSEXP);
+    Rcpp::traits::input_parameter< int >::type nnz_this(nnz_thisSEXP);
+    Rcpp::traits::input_parameter< Rcpp::NumericVector >::type F_R(F_RSEXP);
+    Rcpp::traits::input_parameter< Rcpp::NumericVector >::type Fsum(FsumSEXP);
+    Rcpp::traits::input_parameter< int >::type n(nSEXP);
+    Rcpp::traits::input_parameter< double >::type l2_reg(l2_regSEXP);
+    Rcpp::traits::input_parameter< Rcpp::NumericVector >::type grad_R(grad_RSEXP);
+    rcpp_result_gen = Rcpp::wrap(calc_grad_single_R(x_R, X_R, X_ind, nnz_this, F_R, Fsum, n, l2_reg, grad_R));
+    return rcpp_result_gen;
 END_RCPP
 }
 
 static const R_CallMethodDef CallEntries[] = {
     {"_poismf_r_wrapper_poismf", (DL_FUNC) &_poismf_r_wrapper_poismf, 19},
     {"_poismf_predict_multiple", (DL_FUNC) &_poismf_predict_multiple, 8},
-    {"_poismf_factorize_single", (DL_FUNC) &_poismf_factorize_single, 8},
+    {"_poismf_calc_fun_single_R", (DL_FUNC) &_poismf_calc_fun_single_R, 9},
+    {"_poismf_calc_grad_single_R", (DL_FUNC) &_poismf_calc_grad_single_R, 9},
     {NULL, NULL, 0}
 };
 

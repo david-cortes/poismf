@@ -40,15 +40,18 @@
 	#include <stdio.h>
 #endif
 #include <stddef.h>
-#if !defined(_WIN32) && !defined(_WIN64)
-	#ifndef _FOR_R
+#ifndef _FOR_R
+	#if !defined(_WIN32) && !defined(_WIN64)
 		#include "nonnegcg.h" /* https://www.github.com/david-cortes/nonneg_cg */
-	#else
-		#include <Rinternals.h>
-		#include <R.h>
-		#include <R_ext/Rdynload.h>
-		#include <R_ext/Print.h>
-		#define fprintf(f, message) REprintf(message)
+	#endif
+#else
+	#include <Rinternals.h>
+	#include <R.h>
+	#include <R_ext/Rdynload.h>
+	#include <R_ext/Print.h>
+	#define fprintf(f, message) REprintf(message)
+	#if !defined(_WIN32) && !defined(_WIN64)
+		/* https://www.github.com/david-cortes/nonneg_cg */
 		typedef void fun_eval(double x[], int n, double *f, void *data);
 		typedef void grad_eval(double x[], int n, double grad[], void *data);
 		typedef void callback(double x[], int n, double f, size_t iter, void *data);

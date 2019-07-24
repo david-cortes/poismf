@@ -5,8 +5,8 @@
 \title{Factorization of Sparse Counts Matrices through Poisson Likelihood}
 \usage{
 poismf(X, k = 50, l1_reg = 0, l2_reg = 1e+09, niter = 10,
-  nupd = 1, step_size = 1e-07, solver = "pg", init_type = "gamma",
-  seed = 1, nthreads = -1)
+  nupd = 1, step_size = 1e-07, init_type = "gamma", seed = 1,
+  nthreads = -1)
 }
 \arguments{
 \item{X}{The matrix to factorize. Can be: a) a `data.frame` with 3 columns, containing in this order:
@@ -28,8 +28,6 @@ d) a sparse matrix from package `Matrix` in triplets format.}
 \item{step_size}{Initial step size to use (proximal gradient only). Will be decreased by 1/2 after each iteration.
 Ignored for conjugate gradient.}
 
-\item{solver}{One of "pg" or "cg".}
-
 \item{init_type}{One of "gamma" or "uniform" (How to intialize the factorizing matrices).}
 
 \item{seed}{Random seed to use for starting the factorizing matrices.}
@@ -43,7 +41,7 @@ An object of class `poismf` with the following fields of interest:
 \description{
 Creates a low-rank non-negative factorization of a sparse counts matrix by
 maximizing Poisson likelihood with L1/L2 regularization, using optimization routines
-based on either proximal gradient or conjugate gradient.
+based on proximal gradient iteration.
 }
 \section{Fields}{
 

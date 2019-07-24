@@ -1,7 +1,7 @@
 #' @title Factorization of Sparse Counts Matrices through Poisson Likelihood
 #' @description Creates a low-rank non-negative factorization of a sparse counts matrix by
 #' maximizing Poisson likelihood with L1/L2 regularization, using optimization routines
-#' based on either proximal gradient or conjugate gradient.
+#' based on proximal gradient iteration.
 #' @param X The matrix to factorize. Can be: a) a `data.frame` with 3 columns, containing in this order:
 #' row index (starting at 1), column index, count value (the indices can also be character type, in wich
 #' case it will enumerate them); b) A sparse matrix in COO format from the `SparseM` package;
@@ -14,7 +14,6 @@
 #' @param nupd Number of updates per iteration (recommended to use at least 3 for conjugate gradient)
 #' @param step_size Initial step size to use (proximal gradient only). Will be decreased by 1/2 after each iteration.
 #' Ignored for conjugate gradient.
-#' @param solver One of "pg" or "cg".
 #' @param init_type One of "gamma" or "uniform" (How to intialize the factorizing matrices).
 #' @param seed Random seed to use for starting the factorizing matrices.
 #' @param nthreads Number of parallel threads to use. Passing a negative number will use
@@ -42,25 +41,23 @@
 #' #all predictions for new row/user/doc
 #' head(predict(model, data.frame(col_ix = c(1,2,3), count = c(4,5,6)) ))
 poismf <- function(X, k = 50, l1_reg = 0, l2_reg = 1e9, niter = 10, nupd = 1, step_size = 1e-7,
-				   solver = "pg", init_type = "gamma", seed = 1, nthreads = -1) {
+				   init_type = "gamma", seed = 1, nthreads = -1) {
 	
 	### Check input parameters
 	if (NROW(niter) > 1 || niter < 1) { stop("'niter' must be a positive integer.") }
 	if (NROW(nthreads) > 1 || nthreads < 1) {nthreads <- parallel::detectCores()}
 	if (NROW(k) > 1 || k < 1) { stop("'k' must be a positive integer.") }
-	if (solver != "pg" & solver != "cg") {stop("'solver' must be one of 'pg' or 'cg'.")}
-	if (solver == "pg" && step_size <= 0) {stop("'step_size' must be a positive number.")}
 	if (nupd < 1) {stop("'nupd' must be a positive integer.")}
 	if (l1_reg < 0 | l2_reg < 0) {stop("Regularization parameters must be non-negative.")}
 	if (init_type != "gamma" & init_type != "uniform") {stop("'init_type' must be one of 'gamma' or 'uniform'.")}
 	
-	k <- as.integer(k)
-	l1_reg <- as.numeric(l1_reg)
-	l2_reg <- as.numeric(l2_reg)
+	k         <- as.integer(k)
+	l1_reg    <- as.numeric(l1_reg)
+	l2_reg    <- as.numeric(l2_reg)
 	step_size <- as.numeric(step_size)
-	niter <- as.integer(niter)
-	nupd <- as.integer(nupd)
-	nthreads <- as.integer(nthreads)
+	niter     <- as.integer(niter)
+	nupd      <- as.integer(nupd)
+	nthreads  <- as.integer(nthreads)
 	
 	is_non_int <- FALSE
 	
@@ -70,17 +67,17 @@ poismf <- function(X, k = 50, l1_reg = 0, l2_reg = 1e9, niter = 10, nupd = 1, st
 		if (!("integer") %in% class(X[[1]]) & !("numeric" %in% class(X[[1]]))) { is_non_int <- TRUE }
 		if (!("integer") %in% class(X[[2]]) & !("numeric" %in% class(X[[2]]))) { is_non_int <- TRUE }
 		if (is_non_int) {
-			X[[1]] <- factor(X[[1]])
-			X[[2]] <- factor(X[[2]])
+			X[[1]]   <- factor(X[[1]])
+			X[[2]]   <- factor(X[[2]])
 			levels_A <- levels(X[[1]])
 			levels_B <- levels(X[[2]])
-			X[[1]] <- as.integer(X[[1]])
-			X[[2]] <- as.integer(X[[2]])
+			X[[1]]   <- as.integer(X[[1]])
+			X[[2]]   <- as.integer(X[[2]])
 		}
 		
 		ix_row <- as.integer(X[[1]])
 		ix_col <- as.integer(X[[2]])
-		xflat <- as.numeric(X[[3]])
+		xflat  <- as.numeric(X[[3]])
 		
 		if (any(is.na(ix_row)) || any(is.na(ix_col)) || any(is.na(xflat))) {
 			stop("Input contains missing values.")
@@ -120,11 +117,11 @@ poismf <- function(X, k = 50, l1_reg = 0, l2_reg = 1e9, niter = 10, nupd = 1, st
 	### Initialize factor matrices
 	set.seed(seed)
 	if (init_type == "gamma") {
-		A = rgamma(dimA * k, 1)
-		B = rgamma(dimB * k, 1)
+		A <- rgamma(dimA * k, 1)
+		B <- rgamma(dimB * k, 1)
 	} else {
-		A = runif(dimA * k)
-		B = runif(dimB * k)
+		A <- runif(dimA * k)
+		B <- runif(dimB * k)
 	}
 	
 	### Run optimizer
@@ -132,17 +129,17 @@ poismf <- function(X, k = 50, l1_reg = 0, l2_reg = 1e9, niter = 10, nupd = 1, st
 		r_wrapper_poismf(A, B, dimA, dimB, k,
 						 Xcsr@ra, Xcsr@ja - 1, Xcsr@ia - 1,
 						 Xcsc@ra, Xcsc@ia - 1, Xcsc@ja - 1,
-						 nnz, l1_reg, l2_reg, niter, nupd, step_size, solver == "cg", nthreads)
+						 nnz, l1_reg, l2_reg, niter, nupd, step_size, 0, nthreads)
 	} else {
 		r_wrapper_poismf(A, B, dimA, dimB, k,
 						 Xcsr@x, Xcsr@i, Xcsr@p,
 						 Xcsc@x, Xcsc@i, Xcsc@p,
-						 nnz, l1_reg, l2_reg, niter, nupd, step_size, solver == "cg", nthreads)
+						 nnz, l1_reg, l2_reg, niter, nupd, step_size, 0, nthreads)
 	}
 	
 	### Return all info
-	A <- matrix(A, nrow = k, ncol = dimA)
-	B <- matrix(B, nrow = k, ncol = dimB)
+	A    <- matrix(A, nrow = k, ncol = dimA)
+	B    <- matrix(B, nrow = k, ncol = dimB)
 	Asum <- rowSums(A)
 	Bsum <- rowSums(B)
 	
@@ -157,7 +154,6 @@ poismf <- function(X, k = 50, l1_reg = 0, l2_reg = 1e9, niter = 10, nupd = 1, st
 		niter = niter,
 		nupd = nupd,
 		step_size = step_size,
-		solver = solver,
 		init_type = init_type,
 		dimA = dimA,
 		dimB = dimB,
@@ -209,11 +205,11 @@ predict.poismf <- function(object, a, b = NULL, seed = 10, ...) {
 	### check if factors need to be calculated on-the-fly
 	if ("data.frame" %in% class_a) {
 		x_vec <- as.numeric(a[[2]])
-		a <- as.integer(a[[1]])
+		a     <- as.integer(a[[1]])
 	}
 	if ("dsparseVector" %in% class_a) {
 		x_vec <- as.numeric(a@x)
-		a <- as.integer(a@i)
+		a     <- as.integer(a@i)
 	}
 	
 	if (!is.null(b) && is.null(x_vec) && length(a) != length(b)) { stop("'a' and 'b' must be of the same length.") }
@@ -249,7 +245,8 @@ predict.poismf <- function(object, a, b = NULL, seed = 10, ...) {
 			a_vec <- runif(object$k)
 		}
 		factorize_single(a_vec, x_vec, a, length(a),
-						 object$B, object$Bsum, object$k, object$l2_reg)
+						 object$B, object$Bsum, object$k,
+						 object$l1_reg, object$l2_reg)
 	}
 	
 	if (is.null(b)) {
@@ -289,7 +286,7 @@ print.poismf <- function(x, ...) {
 	cat("Number of non-zero entries:", x$nnz, "\n")
 	cat("Dimensionality of factorization:", x$k, "\n")
 	cat("L1 regularization :", x$l1_reg, " - L2 regularization: ", x$l2_reg, "\n")
-	cat("Solver used: ", x$solver, " - iterations: ", x$niter, " - upd. per iter: ", x$nupd, "\n")
+	cat("Iterations: ", x$niter, " - upd. per iter: ", x$nupd, "\n")
 	cat("Initialization: ", x$init_type, " - Random seed: ", x$seed, "\n")
 	
 	if ("levels_A" %in% names(x)) {
@@ -306,4 +303,14 @@ print.poismf <- function(x, ...) {
 #' @export
 summary.poismf <- function(object, ...) {
 	print.poismf(object)
+}
+
+
+factorize_single <- function(a_vector, x, ix, nnz, B, Bsum, k, l1_reg, l2_reg) {
+	if (l1_reg > 0) { Bsum <- Bsum + l1_reg }
+	nonneg.cg::minimize.nonneg.cg(calc_fun_single_R, calc_grad_single_R, a_vector,
+								  tol=1e-3, maxnfeval=500, maxiter=200,
+								  decr_lnsrch=.5, lnsrch_const=.01, max_ls=20,
+								  extra_nonneg_tol=FALSE, nthreads=1, verbose=FALSE,
+								  x, ix, nnz, B, Bsum, k, l2_reg, vector(mode = "numeric", length = k))
 }

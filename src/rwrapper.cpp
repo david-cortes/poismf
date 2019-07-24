@@ -7,13 +7,13 @@ extern "C" {
 		const size_t dimA, const size_t dimB, const size_t k,
 		const double l2_reg, const double l1_reg, const int use_cg, double step_size,
 		const size_t numiter, const size_t npass, const int ncores);
-	void optimize_cg_single(
-		double curr[], double X[], size_t X_ind[], size_t nnz_this,
-		double F[], double Fsum[], int k, double l2_reg);
+	double cblas_ddot(int n, double *x, int incx, double *y, int incy);
+	void cblas_daxpy(int n, double a, double *x, int incx, double *y, int incy);
+	void cblas_dscal(int n, double alpha, double *x, int incx);
 }
 #include <Rcpp.h>
 #ifdef _OPENMP
-	#if _OPENMP < 20080101 /* OpenMP < 3.0 */
+#if _OPENMP > 200801 /* OpenMP > 3.0 */
 		#define size_t_for size_t
 	#else
 		#define size_t_for
@@ -70,7 +70,7 @@ void predict_multiple(Rcpp::NumericVector A, Rcpp::NumericVector B, int k, size_
 	Rcpp::IntegerVector ia, Rcpp::IntegerVector ib, Rcpp::NumericVector out, int nthreads)
 {
 	#ifdef _OPENMP
-		#if _OPENMP < 20080101 /* OpenMP < 3.0 */
+		#if _OPENMP < 200801 /* OpenMP < 3.0 */
 			long i;
 		#endif
 	#endif
@@ -80,17 +80,55 @@ void predict_multiple(Rcpp::NumericVector A, Rcpp::NumericVector B, int k, size_
 	for (size_t_for i = 0; i < npred; i++) { out[i] = ddot_(&k, &A[ia[i] * k], &one, &B[ib[i] * k], &one); }
 }
 
+/* Note: this will just pass these functions to package 'nonneg.cg'.
+   It was too complicated to work with the DLLs directly, so it's instead used as R -> C -> R -> C -> R,
+   even though this is severly sub-optimal */
 
 // [[Rcpp::export]]
-void factorize_single(Rcpp::NumericVector a_vector, Rcpp::NumericVector x, Rcpp::IntegerVector ix, size_t nnz,
-	Rcpp::NumericVector B, Rcpp::NumericVector Bsum, int k, double l2_reg)
+double calc_fun_single_R(Rcpp::NumericVector x_R, Rcpp::NumericVector X_R, Rcpp::IntegerVector X_ind, int nnz_this,
+                         Rcpp::NumericVector F_R, Rcpp::NumericVector Fsum, int n, double l2_reg, Rcpp::NumericVector grad)
 {
-	std::vector<size_t> ix_szt;
-	ix_szt.reserve(nnz);
-
-	for (size_t i = 0; i < nnz; i++) { ix_szt[i] = (size_t) ix[i] - 1; }
-
-	optimize_cg_single(
-		a_vector.begin(), x.begin(), (size_t*) &ix_szt[0], nnz,
-		B.begin(), Bsum.begin(), k, l2_reg);
+	double *x = &x_R[0];
+	double *F = &F_R[0];
+	double *X = &X_R[0];
+	double out = cblas_ddot(n, &Fsum[0], 1, x, 1);
+	double norm_sq = cblas_ddot(n, x, 1, x, 1);
+	out += l2_reg * norm_sq;
+	for (size_t i = 0; i < nnz_this; i++)
+	{
+		out -= X[i] * log( cblas_ddot(n, x, 1, F + X_ind[i] * n, 1) );
+	}
+	return out;
 }
+
+// [[Rcpp::export]]
+Rcpp::NumericVector calc_grad_single_R(Rcpp::NumericVector x_R, Rcpp::NumericVector X_R, Rcpp::IntegerVector X_ind, int nnz_this,
+                                       Rcpp::NumericVector F_R, Rcpp::NumericVector Fsum, int n, double l2_reg, Rcpp::NumericVector grad_R)
+{
+	double *grad = &grad_R[0];
+	double *x = &x_R[0];
+	double *X = &X_R[0];
+	double *F = &F_R[0];
+	memcpy(grad, &Fsum[0], sizeof(double) * n);
+	cblas_daxpy(n, 2 * n * l2_reg, x, 1, grad, 1);
+	for (size_t i = 0; i < nnz_this; i++)
+	{
+		cblas_daxpy(n, - X[i] / cblas_ddot(n, x, 1, F + X_ind[i] * n, 1),
+                    F + X_ind[i] * n, 1, grad, 1);
+	}
+	return grad_R;
+}
+
+
+// void factorize_single(Rcpp::NumericVector a_vector, Rcpp::NumericVector x, Rcpp::IntegerVector ix, size_t nnz,
+// 	Rcpp::NumericVector B, Rcpp::NumericVector Bsum, int k, double l2_reg)
+// {
+// 	std::vector<size_t> ix_szt;
+// 	ix_szt.reserve(nnz);
+// 
+// 	for (size_t i = 0; i < nnz; i++) { ix_szt[i] = (size_t) ix[i] - 1; }
+// 
+// 	optimize_cg_single(
+// 		a_vector.begin(), x.begin(), (size_t*) &ix_szt[0], nnz,
+// 		B.begin(), Bsum.begin(), k, l2_reg);
+// }

@@ -9,7 +9,11 @@ predict_multiple <- function(A, B, k, npred, ia, ib, out, nthreads) {
     invisible(.Call(`_poismf_predict_multiple`, A, B, k, npred, ia, ib, out, nthreads))
 }
 
-factorize_single <- function(a_vector, x, ix, nnz, B, Bsum, k, l2_reg) {
-    invisible(.Call(`_poismf_factorize_single`, a_vector, x, ix, nnz, B, Bsum, k, l2_reg))
+calc_fun_single_R <- function(x_R, X_R, X_ind, nnz_this, F_R, Fsum, n, l2_reg, grad) {
+    .Call(`_poismf_calc_fun_single_R`, x_R, X_R, X_ind, nnz_this, F_R, Fsum, n, l2_reg, grad)
+}
+
+calc_grad_single_R <- function(x_R, X_R, X_ind, nnz_this, F_R, Fsum, n, l2_reg, grad_R) {
+    .Call(`_poismf_calc_grad_single_R`, x_R, X_R, X_ind, nnz_this, F_R, Fsum, n, l2_reg, grad_R)
 }
 
