@@ -82,7 +82,7 @@ void predict_multiple(Rcpp::NumericVector A, Rcpp::NumericVector B, int k, size_
 
 /* Note: this will just pass these functions to package 'nonneg.cg'.
    It was too complicated to work with the DLLs directly, so it's instead used as R -> C -> R -> C -> R,
-   even though this is severly sub-optimal */
+   even though this is severely sub-optimal */
 
 // [[Rcpp::export]]
 double calc_fun_single_R(Rcpp::NumericVector x_R, Rcpp::NumericVector X_R, Rcpp::IntegerVector X_ind, int nnz_this,
@@ -132,3 +132,11 @@ Rcpp::NumericVector calc_grad_single_R(Rcpp::NumericVector x_R, Rcpp::NumericVec
 // 		a_vector.begin(), x.begin(), (size_t*) &ix_szt[0], nnz,
 // 		B.begin(), Bsum.begin(), k, l2_reg);
 // }
+
+
+// [[Rcpp::export]]
+void select_topN(Rcpp::NumericVector preds, Rcpp::IntegerVector ix, int topN)
+{
+	std::partial_sort(ix.begin(), ix.begin() + topN, ix.end(),
+                      [&preds](const int &a, const int &b){return preds[a - 1] > preds[b - 1];});
+}

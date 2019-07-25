@@ -17,3 +17,7 @@ calc_grad_single_R <- function(x_R, X_R, X_ind, nnz_this, F_R, Fsum, n, l2_reg, 
     .Call(`_poismf_calc_grad_single_R`, x_R, X_R, X_ind, nnz_this, F_R, Fsum, n, l2_reg, grad_R)
 }
 
+select_topN <- function(preds, ix, topN) {
+    invisible(.Call(`_poismf_select_topN`, preds, ix, topN))
+}
+

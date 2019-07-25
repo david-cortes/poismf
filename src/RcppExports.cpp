@@ -88,12 +88,25 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// select_topN
+void select_topN(Rcpp::NumericVector preds, Rcpp::IntegerVector ix, int topN);
+RcppExport SEXP _poismf_select_topN(SEXP predsSEXP, SEXP ixSEXP, SEXP topNSEXP) {
+BEGIN_RCPP
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< Rcpp::NumericVector >::type preds(predsSEXP);
+    Rcpp::traits::input_parameter< Rcpp::IntegerVector >::type ix(ixSEXP);
+    Rcpp::traits::input_parameter< int >::type topN(topNSEXP);
+    select_topN(preds, ix, topN);
+    return R_NilValue;
+END_RCPP
+}
 
 static const R_CallMethodDef CallEntries[] = {
     {"_poismf_r_wrapper_poismf", (DL_FUNC) &_poismf_r_wrapper_poismf, 19},
     {"_poismf_predict_multiple", (DL_FUNC) &_poismf_predict_multiple, 8},
     {"_poismf_calc_fun_single_R", (DL_FUNC) &_poismf_calc_fun_single_R, 9},
     {"_poismf_calc_grad_single_R", (DL_FUNC) &_poismf_calc_grad_single_R, 9},
+    {"_poismf_select_topN", (DL_FUNC) &_poismf_select_topN, 3},
     {NULL, NULL, 0}
 };
 

@@ -4,39 +4,51 @@
 \alias{predict.poismf}
 \title{Make predictions for arbitrary entries in matrix}
 \usage{
-\method{predict}{poismf}(object, a, b = NULL, seed = 10, ...)
+\method{predict}{poismf}(object, a, b = NULL, seed = 10, topN = NULL,
+  ...)
 }
 \arguments{
-\item{object}{An object of class "poismf" as returned by function "poismf".}
+\item{object}{An object of class "poismf" as returned by function `poismf`.}
 
 \item{a}{Row(s) for which to predict. Alternatively, a `data.frame` (first column being the column indices and
 second column being the count values) or `sparseVector` (from package `Matrix`)
 of counts for one row/user/document, from which predictions will be calculated by producing latent factors
 on-the-fly.}
 
-\item{b}{Column(s) for which to predict. If NULL, will make predictions for all columns. Otherwise,
+\item{b}{Column(s) for which to predict. If `NULL`, will make predictions for all columns. Otherwise,
 it must be of the same length as "a", and the output will contain the prediction for each combination
-of "a" and "b" passed here.}
+of "a" and "b" passed here (unless passing `topN`).}
 
 \item{seed}{Random seed to use to initialize factors (when `a` is a `data.frame` or `sparseVector`)}
 
-\item{...}{Extra arguments (not used).}
+\item{topN}{Return top-N ranked items (columns or IDs from "B") according to their predictions. If
+passing argument "b", will return the top-N only among those.}
+
+\item{...}{Not used.}
 }
 \description{
 Make predictions for arbitrary entries in matrix
 }
 \examples{
+library(poismf)
+
+### create a random sparse data frame in COO format
 nrow <- 10 ** 2
 ncol <- 10 ** 3
-nnz <- 10 ** 4
+nnz  <- 10 ** 4
 set.seed(1)
 X <- data.frame(
     row_ix = as.integer(runif(nnz, min = 1, max = nrow)),
     col_ix = as.integer(runif(nnz, min = 1, max = ncol)),
     count = rpois(nnz, 1) + 1)
 X <- X[!duplicated(X[, c("row_ix", "col_ix")]), ]
+
+### factorize the randomly-generated sparse matrix
 model <- poismf(X, nthreads = 1)
+
+### predict functionality
 predict(model, 1, 10) ## predict entry (1, 10)
+predict(model, 1, topN = 10) ## predict top-10 entries "B" for row 1 of "A".
 predict(model, c(1, 1, 1), c(4, 5, 6)) ## predict entries [1,4], [1,5], [1,6]
 head(predict(model, 1)) ## predict the whole row 1
 
@@ -44,5 +56,5 @@ head(predict(model, 1)) ## predict the whole row 1
 head(predict(model, data.frame(col_ix = c(1,2,3), count = c(4,5,6)) ))
 }
 \seealso{
-\link{poismf}
+\link{poismf} \link{predict_all}
 }

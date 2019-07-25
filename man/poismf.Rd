@@ -9,9 +9,11 @@ poismf(X, k = 50, l1_reg = 0, l2_reg = 1e+09, niter = 10,
   nthreads = -1)
 }
 \arguments{
-\item{X}{The matrix to factorize. Can be: a) a `data.frame` with 3 columns, containing in this order:
+\item{X}{The matrix to factorize. Can be:
+a) a `data.frame` with 3 columns, containing in this order:
 row index (starting at 1), column index, count value (the indices can also be character type, in wich
-case it will enumerate them); b) A sparse matrix in COO format from the `SparseM` package;
+case it will enumerate them internally, and will return those same characters from `predict`);
+b) A sparse matrix in COO format from the `SparseM` package;
 c) a full matrix (of class `matrix` or `Matrix::dgTMatrix`);
 d) a sparse matrix from package `Matrix` in triplets format.}
 
@@ -52,17 +54,25 @@ based on proximal gradient iteration.
 }}
 
 \examples{
+library(poismf)
+
+### create a random sparse data frame in COO format
 nrow <- 10 ** 2
 ncol <- 10 ** 3
-nnz <- 10 ** 4
+nnz  <- 10 ** 4
 set.seed(1)
 X <- data.frame(
     row_ix = as.integer(runif(nnz, min = 1, max = nrow)),
     col_ix = as.integer(runif(nnz, min = 1, max = ncol)),
     count = rpois(nnz, 1) + 1)
 X <- X[!duplicated(X[, c("row_ix", "col_ix")]), ]
+
+### factorize the randomly-generated sparse matrix
 model <- poismf(X, nthreads = 1)
+
+### predict functionality
 predict(model, 1, 10) ## predict entry (1, 10)
+predict(model, 1, topN = 10) ## predict top-10 entries "B" for row 1 of "A".
 predict(model, c(1, 1, 1), c(4, 5, 6)) ## predict entries [1,4], [1,5], [1,6]
 head(predict(model, 1)) ## predict the whole row 1
 
@@ -71,4 +81,7 @@ head(predict(model, data.frame(col_ix = c(1,2,3), count = c(4,5,6)) ))
 }
 \references{
 Cortes, David. "Fast Non-Bayesian Poisson Factorization for Implicit-Feedback Recommendations." arXiv preprint arXiv:1811.01908 (2018).
+}
+\seealso{
+\link{predict.poismf} \link{predict_all}
 }

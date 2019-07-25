@@ -1,8 +1,8 @@
 Package: poismf
 Type: Package
 Title: Factorization of Sparse Counts Matrices Through Poisson Likelihood
-Version: 0.1
-Date: 2019-02-21
+Version: 0.1.1
+Date: 2019-07-25
 Author: David Cortes
 Maintainer: David Cortes <david.cortes.rivera@gmail.com>
 Description: Creates a low-rank factorization of a sparse counts matrix by maximizing Poisson likelihood with l1/l2 regularization

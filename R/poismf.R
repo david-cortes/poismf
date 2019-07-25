@@ -2,9 +2,11 @@
 #' @description Creates a low-rank non-negative factorization of a sparse counts matrix by
 #' maximizing Poisson likelihood with L1/L2 regularization, using optimization routines
 #' based on proximal gradient iteration.
-#' @param X The matrix to factorize. Can be: a) a `data.frame` with 3 columns, containing in this order:
+#' @param X The matrix to factorize. Can be:
+#' a) a `data.frame` with 3 columns, containing in this order:
 #' row index (starting at 1), column index, count value (the indices can also be character type, in wich
-#' case it will enumerate them); b) A sparse matrix in COO format from the `SparseM` package;
+#' case it will enumerate them internally, and will return those same characters from `predict`);
+#' b) A sparse matrix in COO format from the `SparseM` package;
 #' c) a full matrix (of class `matrix` or `Matrix::dgTMatrix`);
 #' d) a sparse matrix from package `Matrix` in triplets format.
 #' @param k Dimensionality of the factorization (a.k.a. number of latent factors).
@@ -24,22 +26,31 @@
 #' @field B : the item/word/column-factor matrix (as a vector, has to be reshaped to (ncols, k)).
 #' @export
 #' @examples 
+#' library(poismf)
+#' 
+#' ### create a random sparse data frame in COO format
 #' nrow <- 10 ** 2
 #' ncol <- 10 ** 3
-#' nnz <- 10 ** 4
+#' nnz  <- 10 ** 4
 #' set.seed(1)
 #' X <- data.frame(
 #'     row_ix = as.integer(runif(nnz, min = 1, max = nrow)),
 #'     col_ix = as.integer(runif(nnz, min = 1, max = ncol)),
 #'     count = rpois(nnz, 1) + 1)
 #' X <- X[!duplicated(X[, c("row_ix", "col_ix")]), ]
+#' 
+#' ### factorize the randomly-generated sparse matrix
 #' model <- poismf(X, nthreads = 1)
+#' 
+#' ### predict functionality
 #' predict(model, 1, 10) ## predict entry (1, 10)
+#' predict(model, 1, topN = 10) ## predict top-10 entries "B" for row 1 of "A".
 #' predict(model, c(1, 1, 1), c(4, 5, 6)) ## predict entries [1,4], [1,5], [1,6]
 #' head(predict(model, 1)) ## predict the whole row 1
 #' 
 #' #all predictions for new row/user/doc
 #' head(predict(model, data.frame(col_ix = c(1,2,3), count = c(4,5,6)) ))
+#' @seealso \link{predict.poismf} \link{predict_all}
 poismf <- function(X, k = 50, l1_reg = 0, l2_reg = 1e9, niter = 10, nupd = 1, step_size = 1e-7,
 				   init_type = "gamma", seed = 1, nthreads = -1) {
 	
@@ -169,37 +180,49 @@ poismf <- function(X, k = 50, l1_reg = 0, l2_reg = 1e9, niter = 10, nupd = 1, st
 }
 
 #' @title Make predictions for arbitrary entries in matrix
-#' @param object An object of class "poismf" as returned by function "poismf".
+#' @param object An object of class "poismf" as returned by function `poismf`.
 #' @param a Row(s) for which to predict. Alternatively, a `data.frame` (first column being the column indices and
 #' second column being the count values) or `sparseVector` (from package `Matrix`)
 #' of counts for one row/user/document, from which predictions will be calculated by producing latent factors
 #' on-the-fly.
-#' @param b Column(s) for which to predict. If NULL, will make predictions for all columns. Otherwise,
+#' @param b Column(s) for which to predict. If `NULL`, will make predictions for all columns. Otherwise,
 #' it must be of the same length as "a", and the output will contain the prediction for each combination
-#' of "a" and "b" passed here.
+#' of "a" and "b" passed here (unless passing `topN`).
 #' @param seed Random seed to use to initialize factors (when `a` is a `data.frame` or `sparseVector`)
-#' @param ... Extra arguments (not used).
-#' @seealso \link{poismf}
+#' @param topN Return top-N ranked items (columns or IDs from "B") according to their predictions. If
+#' passing argument "b", will return the top-N only among those.
+#' @param ... Not used.
+#' @seealso \link{poismf} \link{predict_all}
 #' @export
 #' @examples 
+#' library(poismf)
+#' 
+#' ### create a random sparse data frame in COO format
 #' nrow <- 10 ** 2
 #' ncol <- 10 ** 3
-#' nnz <- 10 ** 4
+#' nnz  <- 10 ** 4
 #' set.seed(1)
 #' X <- data.frame(
 #'     row_ix = as.integer(runif(nnz, min = 1, max = nrow)),
 #'     col_ix = as.integer(runif(nnz, min = 1, max = ncol)),
 #'     count = rpois(nnz, 1) + 1)
 #' X <- X[!duplicated(X[, c("row_ix", "col_ix")]), ]
+#' 
+#' ### factorize the randomly-generated sparse matrix
 #' model <- poismf(X, nthreads = 1)
+#' 
+#' ### predict functionality
 #' predict(model, 1, 10) ## predict entry (1, 10)
+#' predict(model, 1, topN = 10) ## predict top-10 entries "B" for row 1 of "A".
 #' predict(model, c(1, 1, 1), c(4, 5, 6)) ## predict entries [1,4], [1,5], [1,6]
 #' head(predict(model, 1)) ## predict the whole row 1
 #' 
 #' #all predictions for new row/user/doc
 #' head(predict(model, data.frame(col_ix = c(1,2,3), count = c(4,5,6)) ))
-predict.poismf <- function(object, a, b = NULL, seed = 10, ...) {
+predict.poismf <- function(object, a, b = NULL, seed = 10, topN = NULL, ...) {
 	
+	if (!is.null(topN) && ("numeric" %in% class(topN))) { topN <- as.integer(topN) }
+	if (!is.null(topN) && (!("integer" %in% class(topN)))) { stop("'topN' must be an integer.") }
 	class_a <- class(a)
 	x_vec <- NULL
 	### check if factors need to be calculated on-the-fly
@@ -212,6 +235,7 @@ predict.poismf <- function(object, a, b = NULL, seed = 10, ...) {
 		a     <- as.integer(a@i)
 	}
 	
+	if (!is.null(b) && length(b) > 1 && length(a) == 1) { a <- rep(a, length(b)) }
 	if (!is.null(b) && is.null(x_vec) && length(a) != length(b)) { stop("'a' and 'b' must be of the same length.") }
 	if ("levels_A" %in% names(object)) {
 		if (is.null(x_vec)) {
@@ -256,7 +280,7 @@ predict.poismf <- function(object, a, b = NULL, seed = 10, ...) {
 			pred <- a_vec %*% object$B
 		}
 	} else {
-		pred = vector(mode = "numeric", length = length(b))
+		pred <- vector(mode = "numeric", length = length(b))
 		if (is.null(x_vec)) {
 			predict_multiple(object$A, object$B, object$k, length(b), a - 1, b - 1, pred, object$nthreads)
 		} else {
@@ -266,12 +290,38 @@ predict.poismf <- function(object, a, b = NULL, seed = 10, ...) {
 	}
 	pred <- as.vector(pred)
 	
-	if (!is.null(b) && "levels_A" %in% names(object)) {
-		names(pred) <- object$levels_B
-		return(pred)
+	if (is.null(topN)) {
+		if (!is.null(b) && "levels_B" %in% names(object)) {
+			names(pred) <- object$levels_B
+			return(pred)
+		} else {
+			return(pred)
+		}
 	} else {
-		return(pred)
+		if (is.null(b)) { b <- 1:NROW(pred) }
+		select_topN(pred, b, topN)
+		b <- b[1:topN]
+		if ("levels_B" %in% names(object)) {
+			b <- object$levels_B[b]
+		}
+		return(b)
 	}
+}
+
+#' @title Predict whole input matrix
+#' @description Outputs the predictions for the whole input matrix to which the model was fit.
+#' Note that this will be a dense matrix, and in typical recommender systems scenarios will
+#' likely not fit in memory.
+#' @param model A Poisson factorization model as output byfunction `poismf`.
+#' @return A matrix A x B with the full predictions for all rows and column. If the inputs
+#' did not have numbers as IDs, the equivalences to their IDs in the outputs are in the
+#' `poismf` object under fields `levels_A` and `levels_B`.
+#' @export
+predict_all <- function(model) {
+	if (class(model) != "poismf") {
+		stop("'model' must be a 'poismf' object as produced by function 'poismf'.")
+	}
+	return(matrix(model$A, nrow = model$dimA, ncol = model$k) %*% t(matrix(model$B, nrow = model$dimB, ncol = model$k)))
 }
 
 #' @title Get information about poismf object
