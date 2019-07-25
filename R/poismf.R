@@ -221,10 +221,16 @@ poismf <- function(X, k = 50, l1_reg = 0, l2_reg = 1e9, niter = 10, nupd = 1, st
 #' head(predict(model, data.frame(col_ix = c(1,2,3), count = c(4,5,6)) ))
 predict.poismf <- function(object, a, b = NULL, seed = 10, topN = NULL, ...) {
 	
-	if (!is.null(topN) && ("numeric" %in% class(topN))) { topN <- as.integer(topN) }
+	if (!is.null(topN) && ("numeric" %in% class(topN)))    { topN <- as.integer(topN) }
 	if (!is.null(topN) && (!("integer" %in% class(topN)))) { stop("'topN' must be an integer.") }
+	if (!is.null(topN)) {
+		if ("numeric" %in% class(topN)) { topN <- as.integer(topN) }
+		if (!("integer" %in% class(topN))) { stop("'topN' must be an integer.") }
+		if (topN > NROW(object$dimB)) { stop("'topN' is larger than the number of rows in B.") }
+		if (!is.null(b) && topN > NROW(b)) { stop("'topN' is larger than vector 'b' that was passed.") }
+	}
 	class_a <- class(a)
-	x_vec <- NULL
+	x_vec   <- NULL
 	### check if factors need to be calculated on-the-fly
 	if ("data.frame" %in% class_a) {
 		x_vec <- as.numeric(a[[2]])
