@@ -45,11 +45,17 @@
 		#include "nonnegcg.h" /* https://www.github.com/david-cortes/nonneg_cg */
 	#endif
 #else
+	#ifdef __cplusplus
+	extern "C" {
+	#endif
 	#include <Rinternals.h>
 	#include <R.h>
 	#include <R_ext/Rdynload.h>
 	#include <R_ext/Print.h>
 	#define fprintf(f, message) REprintf(message)
+	#ifdef __cplusplus
+	}
+	#endif
 	#if !defined(_WIN32) && !defined(_WIN64)
 		/* https://www.github.com/david-cortes/nonneg_cg */
 		typedef void fun_eval(double x[], int n, double *f, void *data);
@@ -77,6 +83,9 @@
 #endif
 
 /* BLAS functions */
+#ifdef __cplusplus
+extern "C" {
+#endif
 #ifdef _FOR_PYTON
 	#include "findblas.h"  /* https://www.github.com/david-cortes/findblas */
 #elif defined(_FOR_R)
@@ -98,6 +107,9 @@
 		void cblas_daxpy(const int n, const double alpha, const double *x, const int incx, double *y, const int incy) { for (int i = 0; i < n; i++) { y[i] += alpha * x[i]; } }
 		void cblas_dscal(const int N, const double alpha, double *X, const int incX) { for (int i = 0; i < N; i++) { X[i] *= alpha; } }
 	#endif
+#endif
+#ifdef __cplusplus
+}
 #endif
 
 /* Aliasing for compiler optimizations */
@@ -137,7 +149,7 @@
 #endif
 
 /* Helper functions */
-#define nonneg(x) (x > 0)? x : 0
+#define nonneg(x) ((x) > 0)? (x) : 0
 
 void sum_by_cols(double *restrict out, double *restrict M, size_t nrow, size_t ncol, int ncores)
 {
@@ -312,6 +324,9 @@ void run_poismf(
 {
 
 	double *cnst_sum = (double*) malloc(sizeof(double) * k);
+	double cnst_div;
+	int k_int = (int) k;
+	double neg_step_sz = -step_size;
 	bool buffer_alloc_error = false;
 	#pragma omp parallel firstprivate(use_cg)
 	{
@@ -337,10 +352,6 @@ void run_poismf(
 	#elif defined(openblas_set_num_threads)
 		openblas_set_num_threads(1);
 	#endif
-
-	double cnst_div;
-	int k_int = (int) k;
-	double neg_step_sz = -step_size;
 
 	for (size_t fulliter = 0; fulliter < numiter; fulliter++){
 
