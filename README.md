@@ -18,8 +18,11 @@ The implementation is in C with interfaces for Python and R. Parallelization is 
 
 * Python
 
-Linux, MacOS, and Windows depending on NumPy:
+Linux, MacOS + GCC, and Windows depending on NumPy:
 ```pip install poismf```
+
+
+MacOS without GCC: install OpenMP modules for CLANG (these don't come by default in apple's "special" clang distribution, even though they are part of standard clang), then install with either `pip install poismf` or `python setup.py install`.
 
 
 Windows with unlucky NumPy version:
