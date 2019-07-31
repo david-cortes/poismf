@@ -33,6 +33,22 @@
 
  */
 
+
+/* Aliasing for compiler optimizations */
+#ifndef restrict
+	#ifdef __restrict
+		#define restrict __restrict
+	#elif defined(__restrict__)
+		#define restrict __restrict__
+	#else
+		#define restrict
+	#endif
+#endif
+/* Note: MSVC is a special boy which does not allow 'restrict' in C mode,
+   so don't move this piece of code down with the others, otherwise the
+   function prototypes will not compile */
+
+
 #include <stdbool.h>
 #include <string.h>
 #include <math.h>
@@ -41,9 +57,15 @@
 #endif
 #include <stddef.h>
 #ifndef _FOR_R
-	#if !defined(_WIN32) && !defined(_WIN64)
-		#include "nonnegcg.h" /* https://www.github.com/david-cortes/nonneg_cg */
-	#endif
+	/* https://www.github.com/david-cortes/nonneg_cg */
+	typedef void fun_eval(double x[], int n, double *f, void *data);
+	typedef void grad_eval(double x[], int n, double grad[], void *data);
+	typedef void callback(double x[], int n, double f, size_t iter, void *data);
+	int minimize_nonneg_cg(double x[restrict], int n, double *fun_val,
+						   fun_eval *obj_fun, grad_eval *grad_fun, callback *cb, void *data,
+						   double tol, size_t maxnfeval, size_t maxiter, size_t *niter, size_t *nfeval,
+						   double decr_lnsrch, double lnsrch_const, size_t max_ls,
+						   int extra_nonneg_tol, double *buffer_arr, int nthreads, int verbose);
 #else
 	#ifdef __cplusplus
 	extern "C" {
@@ -56,37 +78,13 @@
 	#ifdef __cplusplus
 	}
 	#endif
-	#if !defined(_WIN32) && !defined(_WIN64)
-		/* https://www.github.com/david-cortes/nonneg_cg */
-		typedef void fun_eval(double x[], int n, double *f, void *data);
-		typedef void grad_eval(double x[], int n, double grad[], void *data);
-		typedef void callback(double x[], int n, double f, size_t iter, void *data);
-		typedef int (*signature_nonneg_cg)(double x[], int n, double *fun_val,
-			fun_eval *obj_fun, grad_eval *grad_fun, callback *cb, void *data,
-			double tol, size_t maxnfeval, size_t maxiter, size_t *niter, size_t *nfeval,
-			double decr_lnsrch, double lnsrch_const, size_t max_ls,
-			int extra_nonneg_tol, double *buffer_arr, int nthreads, int verbose);
-		int minimize_nonneg_cg(double x[], int n, double *fun_val,
-			fun_eval *obj_fun, grad_eval *grad_fun, callback *cb, void *data,
-			double tol, size_t maxnfeval, size_t maxiter, size_t *niter, size_t *nfeval,
-			double decr_lnsrch, double lnsrch_const, size_t max_ls,
-			int extra_nonneg_tol, double *buffer_arr, int nthreads, int verbose) {
-				signature_nonneg_cg fun = NULL;
-				fun = (signature_nonneg_cg) R_GetCCallable("nonneg.cg","minimize_nonneg_cg");
-				return fun(x, n, fun_val,
-					obj_fun, grad_fun, cb, data,
-					tol, maxnfeval, maxiter, niter, nfeval,
-					decr_lnsrch, lnsrch_const, max_ls,
-					extra_nonneg_tol, buffer_arr, nthreads, verbose);
-		}
-	#endif
 #endif
 
 /* BLAS functions */
 #ifdef __cplusplus
 extern "C" {
 #endif
-#ifdef _FOR_PYTON
+#ifdef _FOR_PYTHON
 	#include "findblas.h"  /* https://www.github.com/david-cortes/findblas */
 #elif defined(_FOR_R)
 	#include <R_ext/BLAS.h>
@@ -110,17 +108,6 @@ extern "C" {
 #endif
 #ifdef __cplusplus
 }
-#endif
-
-/* Aliasing for compiler optimizations */
-#ifndef restrict
-	#ifdef __restrict
-		#define restrict __restrict
-	#elif defined(__restrict__)
-		#define restrict __restrict__
-	#else
-		#define restrict
-	#endif
 #endif
 
 /* Visual Studio as of 2019 is stuck with OpenMP 2.0 (released 2002),
@@ -156,7 +143,7 @@ void sum_by_cols(double *restrict out, double *restrict M, size_t nrow, size_t n
 	memset(out, 0, sizeof(double) * ncol);
 
 	#if !(defined(_FOR_R) && (defined(_WIN32) || defined(_WIN64)))
-	#if !defined(_MSC_VER) && defined(HAS_VLA) && (_OPENMP > 200801) /* OpenMP >= 3.0 */
+	#if !defined(_MSC_VER) && !defined(_WIN32) && !defined(_WIN64) && defined(HAS_VLA) && (_OPENMP > 200801) /* OpenMP >= 3.0 */
 	/* DAMN YOU MS, WHY WON'T YOU SUPPORT SUCH BASIC FUNCTIONALITY!!! */
 	#pragma omp parallel for if(ncol <= 100) schedule(static, nrow/ncores) num_threads(ncores) firstprivate(nrow, ncol, M) reduction(+:out[:ncol])
 	#endif
@@ -216,7 +203,7 @@ void pgd_iteration(double *A, double *B, double *Xr, size_t *Xr_indptr, size_t *
 	}
 }
 
-#if !defined(_WIN32) && !defined(_WIN64)
+#ifndef _FOR_R
 /* Functions and structs for Conjugate Gradient - these are used with package nonneg_cg */
 typedef struct fdata {
 	double *F;
@@ -279,6 +266,10 @@ void cg_iteration(double *A, double *B, double *Xr, size_t *Xr_indptr, size_t *X
 	size_t niter;
 	size_t nfeval;
 
+	#if defined(_OPENMP) && (_OPENMP < 200801)
+	long ia;
+	#endif
+
 	#pragma omp parallel for schedule(dynamic) num_threads(ncores) private(fun_val, niter, nfeval) firstprivate(data, dimA, Xr, Xr_indptr, Xr_indices, npass, A, k, k_int)
 	for (size_t_for ia = 0; ia < dimA; ia++)
 	{
@@ -289,8 +280,8 @@ void cg_iteration(double *A, double *B, double *Xr, size_t *Xr_indptr, size_t *X
 		minimize_nonneg_cg(
 			A + ia*k, k_int, &fun_val,
 			calc_fun_single, calc_grad_single, NULL, (void*) &data,
-			1e-3, npass, 100, &niter, &nfeval,
-			0.25, 0.01, 20,
+			1e-5, 150, 50, &niter, &nfeval,
+			0.25, 0.01, 25,
 			1, buffer_arr, 1, 0);
 	}
 }
@@ -360,14 +351,14 @@ void run_poismf(
 		sum_by_cols(cnst_sum, B, dimB, k, ncores);
 		if (l1_reg > 0) { for (size_t kk = 0; kk < k; kk++) { cnst_sum[kk] += l1_reg; } }
 
-		#if !defined(_WIN32) && !defined(_WIN64)
+		#ifndef _FOR_R
 		if (use_cg) {
 			cg_iteration(A, B, Xr, Xr_indptr, Xr_indices, dimA, k, cnst_sum, npass, l2_reg, ncores);
 		} else {
 		#endif
 			cblas_dscal(k_int, neg_step_sz, cnst_sum, 1);
 			pgd_iteration(A, B, Xr, Xr_indptr, Xr_indices, dimA, k, cnst_div, cnst_sum, step_size, npass, ncores);
-		#if !defined(_WIN32) && !defined(_WIN64)
+		#ifndef _FOR_R
 		}
 		#endif
 
@@ -376,7 +367,7 @@ void run_poismf(
 		sum_by_cols(cnst_sum, A, dimA, k, ncores);
 		if (l1_reg > 0) { for (size_t kk = 0; kk < k; kk++) { cnst_sum[kk] += l1_reg; } }
 
-		#if !defined(_WIN32) && !defined(_WIN64)
+		#ifndef _FOR_R
 		if (use_cg) {
 			cg_iteration(B, A, Xr, Xc_indptr, Xc_indices, dimB, k, cnst_sum, npass, l2_reg, ncores);
 		} else {
@@ -387,7 +378,7 @@ void run_poismf(
 			/* Decrease step size after taking PGD steps in both matrices */
 			step_size *= 0.5;
 			neg_step_sz = -step_size;
-		#if !defined(_WIN32) && !defined(_WIN64)
+		#ifndef _FOR_R
 		}
 		#endif
 
@@ -400,3 +391,23 @@ void run_poismf(
 			free(buffer_arr);
 		}
 }
+
+
+#ifdef _FOR_PYTHON
+/* Generic helper function that predicts multiple combinations of users and items from already-fit A and B matrices */
+void predict_multiple(double *out, double *A, double *B, size_t *ix_u, size_t *ix_i, size_t n, int k, int nthreads)
+{
+	#if defined(_OPENMP) && (_OPENMP < 200801)
+	long n_szt = (long) n;
+	long i;
+	#else
+	size_t n_szt = n;
+	#endif
+
+	size_t k_szt = (size_t) k;
+	for (size_t_for i = 0; i < n_szt; i++) {
+		out[i] = cblas_ddot(k, A + ix_u[i] * k_szt, 1, B + ix_i[i] * k_szt, 1);
+	}
+}
+
+#endif

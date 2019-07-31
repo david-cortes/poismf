@@ -5,9 +5,7 @@ Very fast and memory-efficient non-negative matrix factorization for sparse data
 
 The model is similar to [Hierarchical Poisson Factorization](https://arxiv.org/abs/1311.1704), but uses regularization instead of a bayesian hierarchical structure, and is fit through proximal gradient descent instead of variational inference, resulting in a procedure that, for larger datasets, can be more than 400x faster than HPF, and 15x faster than implicit-ALS as implemented in the package [implicit](https://github.com/benfred/implicit).
 
-(Alternatively, can also use L1 regularization or a mixture of L1 and L2, and use a conjugate gradient method instead of proximal gradient, which is slower but less likely to fail)
-
-At the moment it does not have a complete API, only a function to optimize the user/item factor matrices in-place - a similar API to [hpfrec](https://www.github.com/david-cortes/hpfrec) will come in the future. The R version has some basic `predict` functionality though.
+(Alternatively, can also use L1 regularization or a mixture of L1 and L2, and use a conjugate gradient method instead of proximal gradient)
 
 The implementation is in C with interfaces for Python and R. Parallelization is through OpenMP.
 
@@ -20,6 +18,11 @@ The implementation is in C with interfaces for Python and R. Parallelization is 
 
 * Python
 
+Linux, MacOS, and Windows depending on NumPy:
+```pip install poismf```
+
+
+Windows with unlucky NumPy version:
 Clone or download the repository and then install with `setup.py`, e.g.:
 
 ```
@@ -27,9 +30,12 @@ git clone https://github.com/david-cortes/poismf.git
 cd poismf
 python setup.py install
 ```
-(Note that it requires packages `nonnegcg` and  `findblas`, can usually be installed with `pip install nonnegcg findblas`, but sometimes in Windows depending on `numpy` version, `nonnegcg` might have to be installed through `setup.py install` from [here](https://www.github.com/david-cortes/nonneg_cg).)
+(Note that it requires package `findblas`, can usually be installed with `pip install findblas`)
 
-Requires some BLAS library such as MKL (comes by default in Anaconda) or OpenBLAS - will attempt to use the same as NumPy is using. Also requires a C compiler such as GCC or Visual Studio.
+Depending on configuration, in windows you might also try ```python setup.py install --compiler=msvc```.
+
+
+Requires some BLAS library such as MKL (`pip install mkl-devel`) or OpenBLAS - will attempt to use the same as NumPy is using. Also requires a C compiler such as GCC or Visual Studio (in windows + conda, install Visual Studio Build Tools, and select package MSVC140 in the install options).
 
 For any installation problems, please open an issue in GitHub providing information about your system (OS, BLAS, C compiler) and Python installation.
 
@@ -37,51 +43,46 @@ For any installation problems, please open an issue in GitHub providing informat
 ```r
 devtools::install_github("david-cortes/poismf")
 ```
+(Coming to CRAN soon)
 
 # Usage
 
 * Python
 
-In rough terms, you'll need to first initialize the user-factor and item-factor matrices yourself randomly (e.g. `~ Gamma(1,1)` or `~ Uniform(0,1)`), then run the optimization routine on them, passing the observed data in sparse coordinate format:
-
+(API is very similar to `hpfrec`)
 ```python
-import numpy as np
-from scipy.sparse import coo_matrix
+import numpy as np, pandas as pd
 
 ## Generating random sparse data
-nusers = 10**5
-nitems = 10**4
-nobs = 10**6
+nusers = 10 ** 2
+nitems = 10 ** 3
+nnz    = 10 ** 4
 
-## Sparse COO matrix (data, (row, col))
 np.random.seed(1)
-values = (np.random.gamma(1, 1, size=nobs) + 1).astype('int64') ## this is just to round values, they are casted anyway later
-row_id = np.random.randint(nusers, size=nobs)
-col_id = np.random.randint(nitems, size=nobs)
-X = coo_matrix((values, (row_id, col_id)), shape=(nusers, nitems))
+df = pd.DataFrame({
+	'UserId' : np.random.randint(nusers, size = nnz),
+	'ItemId' : np.random.randint(nitems, size = nnz),
+	'Count'  : 1 + np.random.gamma(1, 1, size = nnz).astype(int)
+	})
+### (can also pass a sparse COO matrix instead)
 
-## Initializing paramters
-k = 30 ## number of latent factors
-np.random.seed(123)
-A = np.random.gamma(1, 1, size=(nusers, k)) ## User factors
-B = np.random.gamma(1, 1, size=(nitems, k)) ## Item factors
-
-## Fitting the model
-from poismf import run_pgd
-run_pgd(X, A, B, ncores=1) ## adjust the number of threads/cores accordingly for your computer
-## Matrices A and B are optimized in-place
-
-## Full call
-run_pgd(X, A, B, use_cg=False, l2_reg=1e9, l1_reg=0, step_size=1e-7, niter=10, npass=1, ncores=1)
-
-## Note: for conjugate gradient, increase 'npass' and decrease 'l2_reg'
-
-## Making predictions
-## Predict count of item 10 for user 25
-np.dot(A[25], B[10])
+## Fitting the model -- note that some functions require package 'hpfrec'
+## ('pip install hpfrec')
+from poismf import PoisMF
+model = PoisMF()
+model.fit(df)
+model.topN(df.UserId.iloc[0], n = 10)
+model.predict(df.UserId.iloc[0], df.ItemId.iloc[10])
+model.predict(df.UserId.values[np.random.randint(nnz, size = 10)], df.ItemId.values[np.random.randint(nnz, size = 10)])
 
 
-### Be sure to check that your A and B matrices don't turn to NaNs or Zeros!!
+### Make sure that the parameters (latent factors) didn't end up all-NaN or all-zeros,
+### these are in 'model.A' and 'model.B'
+
+## For CG, need to adjust the default parameters, e.g.
+## model = PoisMF(use_cg = True, l2_reg = 1e3, niter=5)
+
+## For faster fitting without any checks and castings, can use Cython function directly too
 ```
 
 * R
@@ -114,6 +115,8 @@ head(predict(model, data.frame(col_ix = c(1,2,3), count = c(4,5,6)) ))
 ```
 (Can also work with sparse matrices instead of data frames)
 
+* C:
+
 You can also take the C file `poismf/pgd.c` and use it in some language other than Python or R - works with a copy of `X` in row-sparse and another in column-sparse formats.
 
 ```c
@@ -142,3 +145,9 @@ void run_poismf(
 	const double l2_reg, const double l1_reg, const int use_cg, double step_size,
 	const size_t numiter, const size_t npass, const int ncores)
 ```
+
+# Documentation
+
+* Python: available at [ReadTheDocs](https://poismf.readthedocs.io/en/latest/).
+
+* R: documentation available internally (e.g. `help(poismf::poismf`)). Coming to CRAN soon.
