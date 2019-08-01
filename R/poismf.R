@@ -227,6 +227,7 @@ predict.poismf <- function(object, a, b = NULL, seed = 10, topN = NULL, ...) {
 		if ("numeric" %in% class(topN)) { topN <- as.integer(topN) }
 		if (!("integer" %in% class(topN))) { stop("'topN' must be an integer.") }
 		if (topN > object$dimB)            { stop("'topN' is larger than the number of rows in B.") }
+		if (topN <= 0)                     { stop("'topN' must be a positive integer.") }
 		if (!is.null(b) && topN > NROW(b)) { stop("'topN' is larger than vector 'b' that was passed.") }
 	}
 	class_a <- class(a)

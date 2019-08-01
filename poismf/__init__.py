@@ -252,7 +252,6 @@ class PoisMF:
             msg = "'counts_df' contains observations with a count value less than 1, these will be ignored."
             msg += " Any user or item associated exclusively with zero-value observations will be excluded."
             msg += " If using 'reindex=False', make sure that your data still meets the necessary criteria."
-            msg += " If you still want to use these observations, set 'stop_crit' to 'diff-norm' or 'maxiter'."
             warnings.warn(msg)
             if is_coo:
                 self._coo = coo_matrix((self._coo.data[~obs_zero], (self._coo.row[~obs_zero], self._coo.col[~obs_zero])))
@@ -672,17 +671,18 @@ class PoisMF:
             from hpfrec import HPF, cython_loops
         except:
             self._throw_hpfrec_msg()
-        HPF._process_valset(self, input_df, valset=False)
-        out = {'llk': cython_loops.calc_llk(self.val_set.Count.values.astype(ctypes.c_float),
-                                            self.val_set.UserId.values.astype(cython_loops.obj_ind_type),
-                                            self.val_set.ItemId.values.astype(cython_loops.obj_ind_type),
+        temp = self
+        temp.stop_crit = 'maxiter'
+        HPF._process_valset(temp, input_df, valset=False)
+        out = {'llk': cython_loops.calc_llk(temp.val_set.Count.values.astype(ctypes.c_float),
+                                            temp.val_set.UserId.values.astype(cython_loops.obj_ind_type),
+                                            temp.val_set.ItemId.values.astype(cython_loops.obj_ind_type),
                                             self.A.astype(ctypes.c_float),
                                             self.B.astype(ctypes.c_float),
                                             self.k,
                                             self.nthreads,
                                             bool(full_llk)),
-               'nobs':self.val_set.shape[0]}
-        del self.val_set
+               'nobs' : self.val_set.shape[0]}
         return out
 
 
