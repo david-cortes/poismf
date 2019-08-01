@@ -44,9 +44,8 @@ For any installation problems, please open an issue in GitHub providing informat
 
 * R
 ```r
-devtools::install_github("david-cortes/poismf")
+install.packages("poismf")
 ```
-(Coming to CRAN soon)
 
 # Usage
 
@@ -153,4 +152,4 @@ void run_poismf(
 
 * Python: available at [ReadTheDocs](https://poismf.readthedocs.io/en/latest/).
 
-* R: documentation available internally (e.g. `help(poismf::poismf`)). Coming to CRAN soon.
+* R: documentation available internally (e.g. `help(poismf::poismf`)). PDF can be download at [CRAN](https://cran.r-project.org/web/packages/poismf/index.html).
