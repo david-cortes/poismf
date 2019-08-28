@@ -33,6 +33,9 @@
 
  */
 
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 /* Aliasing for compiler optimizations */
 #ifndef restrict
@@ -67,23 +70,14 @@
 						   double decr_lnsrch, double lnsrch_const, size_t max_ls,
 						   int extra_nonneg_tol, double *buffer_arr, int nthreads, int verbose);
 #else
-	#ifdef __cplusplus
-	extern "C" {
-	#endif
 	#include <Rinternals.h>
 	#include <R.h>
 	#include <R_ext/Rdynload.h>
 	#include <R_ext/Print.h>
 	#define fprintf(f, message) REprintf(message)
-	#ifdef __cplusplus
-	}
-	#endif
 #endif
 
 /* BLAS functions */
-#ifdef __cplusplus
-extern "C" {
-#endif
 #ifdef _FOR_PYTHON
 	#include "findblas.h"  /* https://www.github.com/david-cortes/findblas */
 #elif defined(_FOR_R)
@@ -105,9 +99,6 @@ extern "C" {
 		void cblas_daxpy(const int n, const double alpha, const double *x, const int incx, double *y, const int incy) { for (int i = 0; i < n; i++) { y[i] += alpha * x[i]; } }
 		void cblas_dscal(const int N, const double alpha, double *X, const int incX) { for (int i = 0; i < N; i++) { X[i] *= alpha; } }
 	#endif
-#endif
-#ifdef __cplusplus
-}
 #endif
 
 /* Visual Studio as of 2019 is stuck with OpenMP 2.0 (released 2002),
@@ -410,4 +401,8 @@ void predict_multiple(double *out, double *A, double *B, size_t *ix_u, size_t *i
 	}
 }
 
+#endif
+
+#ifdef __cplusplus
+}
 #endif

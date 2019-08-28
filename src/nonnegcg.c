@@ -51,6 +51,10 @@
 	as its use in here is more limited.
 */
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 #ifndef _FOR_R /* not used in the R version */
 
 #include <math.h>
@@ -365,3 +369,7 @@ int minimize_nonneg_cg(double x[restrict], int n, double *fun_val,
 
 
 #endif /* _FOR_R */
+
+#ifdef __cplusplus
+}
+#endif
