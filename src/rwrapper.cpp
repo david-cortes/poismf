@@ -13,7 +13,7 @@ extern "C" {
 }
 #include <Rcpp.h>
 #ifdef _OPENMP
-#if _OPENMP > 200801 /* OpenMP > 3.0 */
+#if (_OPENMP > 200801) && !defined(_WIN32) && !defined(_WIN64) /* OpenMP > 3.0 */
 		#define size_t_for size_t
 	#else
 		#define size_t_for
@@ -39,7 +39,7 @@ void r_wrapper_poismf(Rcpp::NumericVector A, Rcpp::NumericVector B, size_t dimA,
 	Xc_ind.reserve(nnz);
 
 	#ifdef _OPENMP
-		#if _OPENMP < 20080101 /* OpenMP < 3.0 */
+		#if (_OPENMP < 200801) || defined(_WIN32) || defined(_WIN64) /* OpenMP < 3.0 */
 			long i;
 		#endif
 	#endif
@@ -70,7 +70,7 @@ void predict_multiple(Rcpp::NumericVector A, Rcpp::NumericVector B, int k, size_
 	Rcpp::IntegerVector ia, Rcpp::IntegerVector ib, Rcpp::NumericVector out, int nthreads)
 {
 	#ifdef _OPENMP
-		#if _OPENMP < 200801 /* OpenMP < 3.0 */
+		#if (_OPENMP < 200801) || defined(_WIN32) || defined(_WIN64) /* OpenMP < 3.0 */
 			long i;
 		#endif
 	#endif

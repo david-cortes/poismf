@@ -114,7 +114,7 @@ extern "C" {
    which doesn't support parallel loops with unsigned iterators,
    and doesn't support declaring a for-loop iterator in the loop itself. */
 #ifdef _OPENMP
-	#if _OPENMP < 200801 /* OpenMP < 3.0 */
+	#if (_OPENMP < 200801) || defined(_WIN32) || defined(_WIN64) /* OpenMP < 3.0 */
 		#define size_t_for 
 	#else
 		#define size_t_for size_t
@@ -180,7 +180,7 @@ void pgd_iteration(double *A, double *B, double *Xr, size_t *Xr_indptr, size_t *
 	size_t nnz_this;
 
 	#ifdef _OPENMP
-		#if (_OPENMP < 200801) /* OpenMP < 3.0 */
+		#if (_OPENMP < 200801) || defined(_WIN32) || defined(_WIN64) /* OpenMP < 3.0 */
 			long ia;
 		#endif
 	#endif
@@ -266,7 +266,7 @@ void cg_iteration(double *A, double *B, double *Xr, size_t *Xr_indptr, size_t *X
 	size_t niter;
 	size_t nfeval;
 
-	#if defined(_OPENMP) && (_OPENMP < 200801)
+	#if defined(_OPENMP) && ((_OPENMP < 200801) || defined(_WIN32) || defined(_WIN64))
 	long ia;
 	#endif
 
@@ -338,9 +338,9 @@ void run_poismf(
 	}
 
 	/* Functions are already well parallelized by rows/columns, so BLAS should ideally run single-threaded */
-	#if defined(mkl_set_num_threads_local)
-		int ignore = mkl_set_num_threads_local(1);
-	#elif defined(openblas_set_num_threads)
+	#if defined(_MKL_H_)
+		mkl_set_num_threads_local(1);
+	#elif defined(CBLAS_H)
 		openblas_set_num_threads(1);
 	#endif
 
@@ -397,7 +397,7 @@ void run_poismf(
 /* Generic helper function that predicts multiple combinations of users and items from already-fit A and B matrices */
 void predict_multiple(double *out, double *A, double *B, size_t *ix_u, size_t *ix_i, size_t n, int k, int nthreads)
 {
-	#if defined(_OPENMP) && (_OPENMP < 200801)
+	#if defined(_OPENMP) && ((_OPENMP < 200801) || defined(_WIN32) || defined(_WIN64))
 	long n_szt = (long) n;
 	long i;
 	#else

@@ -51,6 +51,8 @@
 	as its use in here is more limited.
 */
 
+#ifndef _FOR_R /* not used in the R version */
+
 #include <math.h>
 #include <stdlib.h>
 #include <stddef.h>
@@ -360,3 +362,6 @@ int minimize_nonneg_cg(double x[restrict], int n, double *fun_val,
 		*fun_val = curr_fun_val;
 	return (int) return_value;
 }
+
+
+#endif /* _FOR_R */
