@@ -33,10 +33,6 @@
 
  */
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
 /* Aliasing for compiler optimizations */
 #ifndef restrict
 	#ifdef __restrict
@@ -78,6 +74,10 @@ extern "C" {
 #endif
 
 /* BLAS functions */
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 #ifdef _FOR_PYTHON
 	#include "findblas.h"  /* https://www.github.com/david-cortes/findblas */
 #elif defined(_FOR_R)
