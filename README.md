@@ -47,6 +47,8 @@ For any installation problems, please open an issue in GitHub providing informat
 install.packages("poismf")
 ```
 
+**Warning:** when using MKL + Mingw64 (e.g. Microsoft's R distribution), predictions for new user will have problems with numerical precision. Problem is not present with OpenBLAS or linux + MKL.
+
 # Usage
 
 * Python
