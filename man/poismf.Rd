@@ -25,10 +25,9 @@ d) a sparse matrix from package `Matrix` in triplets format.}
 
 \item{niter}{Number of iterations to run.}
 
-\item{nupd}{Number of updates per iteration (recommended to use at least 3 for conjugate gradient)}
+\item{nupd}{Number of updates per iteration.}
 
-\item{step_size}{Initial step size to use (proximal gradient only). Will be decreased by 1/2 after each iteration.
-Ignored for conjugate gradient.}
+\item{step_size}{Initial step size to use (proximal gradient only). Will be decreased by 1/2 after each iteration.}
 
 \item{init_type}{One of "gamma" or "uniform" (How to intialize the factorizing matrices).}
 

@@ -13,9 +13,8 @@
 #' @param l1_reg Strength of the l1 regularization
 #' @param l2_reg Strength of the l2 regularization.
 #' @param niter Number of iterations to run.
-#' @param nupd Number of updates per iteration (recommended to use at least 3 for conjugate gradient)
+#' @param nupd Number of updates per iteration.
 #' @param step_size Initial step size to use (proximal gradient only). Will be decreased by 1/2 after each iteration.
-#' Ignored for conjugate gradient.
 #' @param init_type One of "gamma" or "uniform" (How to intialize the factorizing matrices).
 #' @param seed Random seed to use for starting the factorizing matrices.
 #' @param nthreads Number of parallel threads to use. Passing a negative number will use
