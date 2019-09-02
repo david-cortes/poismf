@@ -87,14 +87,16 @@ extern "C" {
 #endif
 
 /* Aliasing for compiler optimizations */
-#ifndef restrict
-	#ifdef __restrict /* MSVC doesn't have proper support for these optimizations */
+#ifdef __cplusplus
+	#if defined(__GNUG__) || defined(__GNUC__) || defined(_MSC_VER) || defined(__clang__) || defined(__INTEL_COMPILER)
 		#define restrict __restrict
-	#elif defined(__restrict__)
-		#define restrict __restrict__
 	#else
 		#define restrict 
 	#endif
+#elif defined(_MSC_VER)
+	#define restrict __restrict
+#elif __STDC_VERSION__ < 199901L
+	#define restrict 
 #endif
 
 /*	OpenMP < 3.0 (e.g. MSVC as of 2019) does not support parallel for's with unsigned iterators,
