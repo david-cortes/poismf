@@ -95,7 +95,7 @@ extern "C" {
 	#endif
 #elif defined(_MSC_VER)
 	#define restrict __restrict
-#elif __STDC_VERSION__ < 199901L
+#elif !defined(__STDC_VERSION__) || (__STDC_VERSION__ < 199901L)
 	#define restrict 
 #endif
 
