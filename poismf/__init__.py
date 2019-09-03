@@ -347,7 +347,7 @@ class PoisMF:
         counts_df['Count']  = counts_df.Count.values.astype(ctypes.c_double)
         return counts_df
 
-    def predict_factors(self, counts_df, random_seed=1):
+    def predict_factors(self, counts_df, random_seed=1, l2_reg=1e3, l1_reg=0):
         """
         Gets latent factors for a user given her item counts
 
@@ -372,19 +372,27 @@ class PoisMF:
             user for whom it's desired to obtain latent factors.
         random_seed : int
             Random seed used to initialize parameters.
+        l2_reg : float
+            Strenght of L2 regularization to use for optimizing the new factors. Note that these are
+            obtained through a conjugate-gradient method instrad of proximal-gradient, which works better
+            with smaller regularization values.
+        l1_reg : float
+            Strength of the L1 regularization (see description of argument above).
 
         Returns
         -------
         latent_factors : array (k,)
             Calculated latent factors for the user, given the input data
         """
-        return self._predict_factors(counts_df, random_seed, False)
+        return self._predict_factors(counts_df, random_seed, False, l2_reg, l1_reg)
 
-    def _predict_factors(self, counts_df, random_seed=1, return_counts=False):
+    def _predict_factors(self, counts_df, random_seed=1, return_counts=False, l2_reg=1e3, l1_reg=0):
         if random_seed is None:
             random_seed = np.random.randint(int(1e5)) + 1
         assert isinstance(random_seed, int)
         assert random_seed > 0
+        assert l2_reg >= 0
+        assert l1_reg >= 0
 
         ## processing the data
         counts_df = self._process_data_single(counts_df)
@@ -395,7 +403,8 @@ class PoisMF:
         else:
             a_vec = np.random.random(size = self.k)
         _predict_factors(a_vec, counts_df.Count.values, counts_df.ItemId.values,
-                         self.B, self.Bsum, self.l2_reg)
+                         self.B, self.Bsum, l2_reg, l1_reg)
+        ### Note: don't confuse with 'self._predict_factors'
 
         if np.any(np.isnan(a_vec)):
             raise ValueError("NaNs encountered in the result. Failed to produce latent factors.")
@@ -407,7 +416,7 @@ class PoisMF:
         else:
             return a_vec
 
-    def add_user(self, user_id, counts_df, update_existing=False, random_seed=1):
+    def add_user(self, user_id, counts_df, update_existing=False, random_seed=1, l2_reg=1e3, l1_reg=0):
         """
         Add a new user to the model or update parameters for a user according to new data
         
@@ -439,6 +448,12 @@ class PoisMF:
             an addition of a new user that was not in the model before (when passing False).
         random_seed : int
             Random seed used to initialize parameters.
+        l2_reg : float
+            Strenght of L2 regularization to use for optimizing the new factors. Note that these are
+            obtained through a conjugate-gradient method instrad of proximal-gradient, which works better
+            with smaller regularization values.
+        l1_reg : float
+            Strength of the L1 regularization (see description of argument above).
 
         Returns
         -------
@@ -457,7 +472,7 @@ class PoisMF:
 
         ## calculating the latent factors
         # Theta = np.empty(self.k, dtype = ctypes.c_float)
-        a_vec, counts_df = self._predict_factors(counts_df, random_seed, True)
+        a_vec, counts_df = self._predict_factors(counts_df, random_seed, True, l2_reg, l1_reg)
 
         ## adding the data to the model
         if update_existing:

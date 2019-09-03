@@ -190,6 +190,11 @@ poismf <- function(X, k = 50, l1_reg = 0, l2_reg = 1e9, niter = 10, nupd = 1, st
 #' @param seed Random seed to use to initialize factors (when `a` is a `data.frame` or `sparseVector`)
 #' @param topN Return top-N ranked items (columns or IDs from "B") according to their predictions. If
 #' passing argument "b", will return the top-N only among those.
+#' @param l2_reg When passing to argument `a` a `data.frame` or `sparseVector` and the new factors needs to the calculated
+#' on-the-fly, it indicates the L2 regularization strenght to use. Note that in this case, the new factors are optimized
+#' through a conjugate-gradient routine, which works better with smaller regulatization values than the
+#' proximal-gradient routine used to fit the model.
+#' @param l1_reg L1 regularization to use in the same case as above.
 #' @param ... Not used.
 #' @seealso \link{poismf} \link{predict_all}
 #' @export
@@ -218,7 +223,7 @@ poismf <- function(X, k = 50, l1_reg = 0, l2_reg = 1e9, niter = 10, nupd = 1, st
 #' 
 #' #all predictions for new row/user/doc
 #' head(predict(model, data.frame(col_ix = c(1,2,3), count = c(4,5,6)) ))
-predict.poismf <- function(object, a, b = NULL, seed = 10, topN = NULL, ...) {
+predict.poismf <- function(object, a, b = NULL, seed = 10, topN = NULL, l2_reg = 1e3, l1_reg = 0, ...) {
 	
 	if (!is.null(topN) && ("numeric" %in% class(topN)))    { topN <- as.integer(topN) }
 	if (!is.null(topN) && (!("integer" %in% class(topN)))) { stop("'topN' must be an integer.") }
@@ -276,7 +281,7 @@ predict.poismf <- function(object, a, b = NULL, seed = 10, topN = NULL, ...) {
 		}
 		factorize_single(a_vec, x_vec, a, length(a),
 						 object$B, object$Bsum, object$k,
-						 object$l1_reg, object$l2_reg)
+						 l1_reg, l2_reg)
 	}
 	
 	if (is.null(b)) {
@@ -366,7 +371,7 @@ factorize_single <- function(a_vector, x, ix, nnz, B, Bsum, k, l1_reg, l2_reg) {
 	if (l1_reg > 0) { Bsum <- Bsum + l1_reg }
 	nonneg.cg::minimize.nonneg.cg(calc_fun_single_R, calc_grad_single_R, a_vector,
 								  tol=1e-3, maxnfeval=500, maxiter=200,
-								  decr_lnsrch=.5, lnsrch_const=.01, max_ls=20,
+								  decr_lnsrch=.25, lnsrch_const=.01, max_ls=20,
 								  extra_nonneg_tol=FALSE, nthreads=1, verbose=FALSE,
 								  x, ix, nnz, B, Bsum, k, l2_reg, vector(mode = "numeric", length = k))
 }

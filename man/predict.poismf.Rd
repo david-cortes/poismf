@@ -5,7 +5,7 @@
 \title{Make predictions for arbitrary entries in matrix}
 \usage{
 \method{predict}{poismf}(object, a, b = NULL, seed = 10, topN = NULL,
-  ...)
+  l2_reg = 1000, l1_reg = 0, ...)
 }
 \arguments{
 \item{object}{An object of class "poismf" as returned by function `poismf`.}
@@ -23,6 +23,13 @@ of "a" and "b" passed here (unless passing `topN`).}
 
 \item{topN}{Return top-N ranked items (columns or IDs from "B") according to their predictions. If
 passing argument "b", will return the top-N only among those.}
+
+\item{l2_reg}{When passing to argument `a` a `data.frame` or `sparseVector` and the new factors needs to the calculated
+on-the-fly, it indicates the L2 regularization strenght to use. Note that in this case, the new factors are optimized
+through a conjugate-gradient routine, which works better with smaller regulatization values than the
+proximal-gradient routine used to fit the model.}
+
+\item{l1_reg}{L1 regularization to use in the same case as above.}
 
 \item{...}{Not used.}
 }

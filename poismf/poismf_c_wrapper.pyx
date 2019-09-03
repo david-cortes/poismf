@@ -33,5 +33,7 @@ def _predict_multiple(np.ndarray[double, ndim=1] out, np.ndarray[double, ndim=2]
 	predict_multiple(&out[0], &A[0,0], &B[0,0], &ix_u[0], &ix_i[0], ix_u.shape[0], A.shape[1], nthreads)
 
 def _predict_factors(np.ndarray[double, ndim=1] a_init, np.ndarray[double, ndim=1] counts, np.ndarray[size_t, ndim=1] ix,
-					 np.ndarray[double, ndim=2] B, np.ndarray[double, ndim=1] Bsum, double l2_reg):
+					 np.ndarray[double, ndim=2] B, np.ndarray[double, ndim=1] Bsum, double l2_reg, double l1_reg):
+	if l1_reg > 0:
+		Bsum += l1_reg
 	optimize_cg_single(&a_init[0], &counts[0], &ix[0], counts.shape[0], &B[0,0], &Bsum[0], B.shape[1], l2_reg)
