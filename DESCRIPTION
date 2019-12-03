@@ -8,11 +8,12 @@ Maintainer: David Cortes <david.cortes.rivera@gmail.com>
 URL: https://github.com/david-cortes/poismf
 BugReports: https://github.com/david-cortes/poismf/issues
 Description: Creates a low-rank factorization of a sparse counts matrix by maximizing Poisson likelihood with l1/l2 regularization
-	with all non-negative latent factors (e.g. for recommender systems or topic modeling) (Cortes, David, 2018, <arXiv:1811.01908>).
+	with all non-negative latent factors (e.g. for recommender systems or topic modeling) (Cortes, (2018) <arXiv:1811.01908>).
 	Similar to hierarchical Poisson factorization, but follows an optimization-based approach with regularization instead of a hierarchical
 	structure, and is fit through either proximal gradient or conjugate gradient instead of variational inference.
 License: BSD_2_clause + file LICENSE
 Imports: Rcpp (>= 0.12.19), Matrix, SparseM, methods, nonneg.cg
+Enhances: Matrix, SparseM
 LinkingTo: Rcpp
 RoxygenNote: 6.1.1
 NeedsCompilation: yes
