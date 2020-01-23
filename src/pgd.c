@@ -62,7 +62,7 @@
 	typedef void fun_eval(double x[], int n, double *f, void *data);
 	typedef void grad_eval(double x[], int n, double grad[], void *data);
 	typedef void callback(double x[], int n, double f, size_t iter, void *data);
-	int minimize_nonneg_cg(double x[restrict], int n, double *fun_val,
+	int minimize_nonneg_cg(double x[], int n, double *fun_val,
 						   fun_eval *obj_fun, grad_eval *grad_fun, callback *cb, void *data,
 						   double tol, size_t maxnfeval, size_t maxiter, size_t *niter, size_t *nfeval,
 						   double decr_lnsrch, double lnsrch_const, size_t max_ls,
