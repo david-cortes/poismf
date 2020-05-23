@@ -4,83 +4,210 @@
 \alias{poismf}
 \title{Factorization of Sparse Counts Matrices through Poisson Likelihood}
 \usage{
-poismf(X, k = 50, l1_reg = 0, l2_reg = 1e+09, niter = 10,
-  nupd = 1, step_size = 1e-07, init_type = "gamma", seed = 1,
-  nthreads = -1)
+poismf(
+  X,
+  k = 30,
+  use_cg = FALSE,
+  l2_reg = ifelse(use_cg, 1e+05, 1e+09),
+  l1_reg = 0,
+  niter = 10,
+  nupd = ifelse(use_cg, 5, 1),
+  initial_step = 1e-07,
+  weight_mult = 1,
+  init_type = "gamma",
+  seed = 1,
+  nthreads = parallel::detectCores()
+)
 }
 \arguments{
-\item{X}{The matrix to factorize. Can be:
-a) a `data.frame` with 3 columns, containing in this order:
-row index (starting at 1), column index, count value (the indices can also be character type, in wich
-case it will enumerate them internally, and will return those same characters from `predict`);
-b) A sparse matrix in COO format from the `SparseM` package;
-c) a full matrix (of class `matrix` or `Matrix::dgTMatrix`);
-d) a sparse matrix from package `Matrix` in triplets format.}
+\item{X}{The counts matrix to factorize. Can be: \itemize{
+\item A `data.frame` with 3 columns, containing in this order:
+row index or user ID, column index or item ID, count value. The first two columns will
+be converted to factors to enumerate them internally, and will return those same
+values from `topN`. In order to avoid this internal re-enumeration, can pass `X`
+as a sparse COO matrix instead.
+\item A sparse matrix from package `Matrix` in triplets (COO) format
+(that is: `Matrix::dgTMatrix`) (recommended).
+Such a matrix can be created from row/column indices through
+function `Matrix::sparseMatrix` (with `giveCsparse=FALSE`).
+Will also accept them in CSC format (`Matrix::dgCMatrix`), but will be converted
+along the way (so it will be slightly slower).
+\item A sparse matrix in COO format from the `SparseM` package. Such a matrix
+can be created from row/column indices through
+`new("matrix.coo", ra=values, ja=col_ix, ia=row_ix, dim=as.integer(c(m,n)))`.
+Will also accept them in CSR and CSC format, but will be converted along the way,
+(so it will be slightly slower).
+\item A full matrix (of class `base::matrix`) - this is not recommended though.
+}
+Passing sparse matrices is faster as it will not need to re-enumerate the rows and columns,
+but if passing a sparse matrix, it cannot have any row or column with all-zero values,
+otherwise the optimization procedure might fail.
+Full matrices will be converted to sparse.}
 
-\item{k}{Dimensionality of the factorization (a.k.a. number of latent factors).}
+\item{k}{Number of latent factors to use (dimensionality of the low-rank factorization).
+Note that since this model deals with non-negative latent factors only and the
+optimal number for every entry is a very small number (depending on sparsity
+and regularization), the optimal `k` is likely to be low, while passing large
+values (e.g. > 100) is likely to produce bad results. If passing large `k`,
+it's recommended to use `use_cg=TRUE`.}
 
-\item{l1_reg}{Strength of the l1 regularization}
+\item{use_cg}{Whether to fit the model through conjugate gradient method. This is slower,
+but less prone to failure, usually reaches better local optima, and is able
+to fit models with lower regularization values.}
 
-\item{l2_reg}{Strength of the l2 regularization.}
+\item{l2_reg}{Strength of L2 regularization. Proximal gradient method will likely fail
+to fit when the regularization is too small, and the recommended value
+is 10^9. Recommended to decrease it when using conjugate gradient method
+to e.g. 10^5 or even zero.}
 
-\item{niter}{Number of iterations to run.}
+\item{l1_reg}{Strength of L1 regularization. Not recommended.}
 
-\item{nupd}{Number of updates per iteration.}
+\item{niter}{Number of alternating iterations to perform. One iteration denotes an update
+over both matrices.}
 
-\item{step_size}{Initial step size to use (proximal gradient only). Will be decreased by 1/2 after each iteration.}
+\item{nupd}{\itemize{
+  \item When using proximal gradient, this is the number of proximal gradient
+  updates to perform to each vector per iteration. Increasing the number of
+  iterations instead of this has the same computational complexity and is
+  likely to produce better results.
+  \item When using conjugate gradient, this is the maximum number of updates
+  per iteration, and it's recommended to set it to a larger value such
+  as 5 or 10, while perhaps decreasing `niter` (for faster fitting),
+  as it will perform a line search in this case. Alternatively, might
+  instead set `nupd` to 1 (in which case it becomes gradient descent)
+  and `niter` to a large number such as 100. If using large `k`,
+  and/or l1 regularization, it's recommended to increase `nupd` due
+  to the way constraints are handled in the CG method (see
+  reference [2] for details) - e.g. if using `k=100`, set `nupd=25`,
+  and maybe also `niter=50` too.
+}}
 
-\item{init_type}{One of "gamma" or "uniform" (How to intialize the factorizing matrices).}
+\item{initial_step}{Initial step size to use. Larger step sizes reach converge faster, but are
+more likely to result in failed optimization. Ignored for conjugate gradient
+as it uses a line search instead.}
+
+\item{weight_mult}{Extra multiplier for the weight of the positive entries over the missing
+entries in the matrix to factorize. Be aware that Poisson likelihood will
+implicitly put more weight on the non-missing entries already. Passing larger
+values will make the factors have larger values (which might be desirable),
+and can help with instability and failed optimization cases. If passing this,
+it's recommended to try very large values (e.g. 10^2), and might require
+adjusting the other hyperparameters. Not recommended.}
+
+\item{init_type}{How to initialize the model parameters. One of `'gamma'` (will initialize
+them `~ Gamma(1, 1))` or `'unif'` (will initialize them `~ Unif(0, 1))`..}
 
 \item{seed}{Random seed to use for starting the factorizing matrices.}
 
-\item{nthreads}{Number of parallel threads to use. Passing a negative number will use
-the maximum available number of threads}
+\item{nthreads}{Number of parallel threads to use.}
 }
 \value{
 An object of class `poismf` with the following fields of interest:
 }
 \description{
 Creates a low-rank non-negative factorization of a sparse counts matrix by
-maximizing Poisson likelihood with L1/L2 regularization, using optimization routines
-based on proximal gradient iteration.
+maximizing Poisson likelihood minus L1/L2 regularization, using optimization routines
+based on either proximal gradient or conjugate gradient.
+
+Ideal for usage in recommender systems, in which the `X` matrix would consist of
+interactions (e.g. clicks, views, plays), with users representing the rows and items
+representing the columns.
+
+Be aware that this model is prone to numerical instability when using proximal gradient, and can
+turn out to spit all NaNs or zeros in the fitted parameters. As an alternative, can use
+a conjugate gradient approach instead, which is slower but
+not susceptible to such failures.
+
+The default hyperparameters are geared towards very fast fitting times, and
+might not be very competitive against other implicit-feedback methods when
+used as-is. It's also possible to obtain better quality models that compare
+very favorably against e.g. implicit-ALS/HPF/BPR/etc. by using a much larger
+number of iterations and updates, lower regularization, and the conjugate gradient
+option - this will take many times longer than with the default hyperparameters,
+but usually it's still faster than other factorization models.
 }
 \section{Fields}{
 
 \describe{
-\item{\code{A}}{: the user/document/row-factor matrix (as a vector, has to be reshaped to (nrows, k)).}
+\item{\code{A}}{The user/document/row-factor matrix (as a vector in row-major order,
+has to be reshaped to (k, nrows) and then transposed to obtain an R matrix).}
 
-\item{\code{B}}{: the item/word/column-factor matrix (as a vector, has to be reshaped to (ncols, k)).}
+\item{\code{B}}{The item/word/column-factor matrix (as a vector in row-major order,
+has to be reshaped to (k, ncols) and then transposed to obtain an R matrix).}
+
+\item{\code{levels_A}}{A vector indicating which user/row ID corresponds to each row
+position in the `A` matrix. This will only be generated when passing `X` as a
+`data.frame`, otherwise will not remap them.}
+
+\item{\code{levels_B}}{A vector indicating which item/column ID corresponds to each row
+position in the `B` matrix. This will only be generated when passing `X` as a
+`data.frame`, otherwise will not remap them.}
 }}
 
 \examples{
 library(poismf)
 
 ### create a random sparse data frame in COO format
-nrow <- 10 ** 2
-ncol <- 10 ** 3
-nnz  <- 10 ** 4
+nrow <- 10^2 ## <- users
+ncol <- 10^3 ## <- items
+nnz  <- 10^4 ## <- events (agg)
 set.seed(1)
 X <- data.frame(
-    row_ix = as.integer(runif(nnz, min = 1, max = nrow)),
-    col_ix = as.integer(runif(nnz, min = 1, max = ncol)),
-    count = rpois(nnz, 1) + 1)
+        row_ix = sample(nrow, size=nnz, replace=TRUE),
+        col_ix = sample(ncol, size=nnz, replace=TRUE),
+        count  = rpois(nnz, 1) + 1
+     )
 X <- X[!duplicated(X[, c("row_ix", "col_ix")]), ]
 
+### can also pass X as sparse matrix - see below
+### X <- Matrix::sparseMatrix(
+###         i=X$row_ix, j=X$col_ix, x=X$count,
+###         giveCsparse=FALSE)
+### the indices can also be characters or other types:
+### X$row_ix <- paste0("user", X$row_ix)
+### X$col_ix <- paste0("item", X$col_ix)
+
 ### factorize the randomly-generated sparse matrix
-model <- poismf(X, nthreads = 1)
+### good speed (proximal gradient)
+model <- poismf(X, nthreads=1)
 
-### predict functionality
-predict(model, 1, 10) ## predict entry (1, 10)
-predict(model, 1, topN = 10) ## predict top-10 entries "B" for row 1 of "A".
-predict(model, c(1, 1, 1), c(4, 5, 6)) ## predict entries [1,4], [1,5], [1,6]
-head(predict(model, 1)) ## predict the whole row 1
+### good quality, but slower (conjugate gradient)
+model <- poismf(X, use_cg=TRUE, nthreads=1)
 
-#all predictions for new row/user/doc
-head(predict(model, data.frame(col_ix = c(1,2,3), count = c(4,5,6)) ))
+### good quality, but much slower (gradient descent)
+model <- poismf(X, use_cg=TRUE, niter=100, nupd=1, nthreads=1)
+
+### predict functionality (chosen entries in X)
+### predict entry [1, 10] (row 1, column 10)
+predict(model, 1, 10)
+### predict entries [1,4], [1,5], [1,6]
+predict(model, c(1, 1, 1), c(4, 5, 6))
+
+### ranking functionality (for recommender systems)
+topN(model, user=2, n=5, exclude=X$col_ix[X$row_ix==2])
+topN.new(model, X=X[X$row_ix==2, c("col_ix","count")],
+    n=5, exclude=X$col_ix[X$row_ix==2])
+
+### obtaining latent factors
+a_vec  <- factors.single(model,
+            X[X$row_ix==2, c("col_ix","count")])
+A_full <- factors(model, X)
+A_orig <- get.factor.matrices(model)$A
+
+### (note that newly-obtained factors will differ slightly)
+sqrt(mean((A_full["2",] - A_orig["2",])^2))
 }
 \references{
-Cortes, David. "Fast Non-Bayesian Poisson Factorization for Implicit-Feedback Recommendations." arXiv preprint arXiv:1811.01908 (2018).
+\itemize{
+\item Cortes, David.
+"Fast Non-Bayesian Poisson Factorization for Implicit-Feedback Recommendations."
+arXiv preprint arXiv:1811.01908 (2018).
+\item Li, Can.
+"A conjugate gradient type method for the nonnegative constraints optimization problems."
+Journal of Applied Mathematics 2013 (2013).
+}
 }
 \seealso{
-\link{predict.poismf} \link{predict_all}
+\link{predict.poismf} \link{topN} \link{factors}
+\link{get.factor.matrices} \link{get.model.mappings}
 }

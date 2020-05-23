@@ -2,66 +2,50 @@
 % Please edit documentation in R/poismf.R
 \name{predict.poismf}
 \alias{predict.poismf}
-\title{Make predictions for arbitrary entries in matrix}
+\title{Predict expected count for new row(user) and column(item) combinations}
 \usage{
-\method{predict}{poismf}(object, a, b = NULL, seed = 10, topN = NULL,
-  l2_reg = 1000, l1_reg = 0, ...)
+\method{predict}{poismf}(object, a, b = NULL, ...)
 }
 \arguments{
-\item{object}{An object of class "poismf" as returned by function `poismf`.}
+\item{object}{A Poisson factorization model as returned by `poismf`.}
 
-\item{a}{Row(s) for which to predict. Alternatively, a `data.frame` (first column being the column indices and
-second column being the count values) or `sparseVector` (from package `Matrix`)
-of counts for one row/user/document, from which predictions will be calculated by producing latent factors
-on-the-fly.}
+\item{a}{Can be either: \itemize{
+\item A vector of length N with the users/rows to predict - each entry will be
+matched to the corresponding entry at the same position in `b` - e.g. to predict
+value for entries (3,4), (3,5), and (3,6), should pass `a=c(3,3,3), b=c(3,5,6)`.
+If `X` passed to `poismf` was a `data.frame`, should match with the entries in
+its first column. If `X` passed to `poismf` was a matrix, should indicate the
+row numbers (numeration starting at 1).
+\item A sparse matrix, ideally in COO (triplets) format from package `Matrix`
+(`Matrix::dgTMatrix`) or from package `SparseM` (`matrix.coo`), in which case it
+will make predictions for the non-zero entries in the matrix and will output
+another sparse matrix with the predicted entries as values. In this case, `b`
+should not be passed. This option is not available if the `X` passed to `poismf`
+was a `data.frame`.
+}}
 
-\item{b}{Column(s) for which to predict. If `NULL`, will make predictions for all columns. Otherwise,
-it must be of the same length as "a", and the output will contain the prediction for each combination
-of "a" and "b" passed here (unless passing `topN`).}
-
-\item{seed}{Random seed to use to initialize factors (when `a` is a `data.frame` or `sparseVector`)}
-
-\item{topN}{Return top-N ranked items (columns or IDs from "B") according to their predictions. If
-passing argument "b", will return the top-N only among those.}
-
-\item{l2_reg}{When passing to argument `a` a `data.frame` or `sparseVector` and the new factors needs to the calculated
-on-the-fly, it indicates the L2 regularization strenght to use. Note that in this case, the new factors are optimized
-through a conjugate-gradient routine, which works better with smaller regulatization values than the
-proximal-gradient routine used to fit the model.}
-
-\item{l1_reg}{L1 regularization to use in the same case as above.}
+\item{b}{A vector of length N with the items/columns to predict - each entry will be
+matched to the corresponding entry at the same position in `a` - e.g. to predict
+value for entries (3,4), (3,5), and (3,6), should pass `a=c(3,3,3), b=c(3,5,6)`.
+If `X` passed to `poismf` was a `data.frame`, should match with the entries in
+its second column. If `X` passed to `poismf` was a matrix, should indicate the
+column numbers (numeration starting at 1). If `a` is a sparse matrix, should not
+pass `b`.}
 
 \item{...}{Not used.}
 }
-\description{
-Make predictions for arbitrary entries in matrix
+\value{
+\itemize{
+\item If `a` and `b` were passed, will return a vector of length N with the
+predictions  for the requested row/column combinations.
+\item If `b` was not passed, will return a sparse matrix with the same entries
+and shape as `a`, but with the values being the predictions from the model for
+the non-missing entries.
 }
-\examples{
-library(poismf)
-
-### create a random sparse data frame in COO format
-nrow <- 10 ** 2
-ncol <- 10 ** 3
-nnz  <- 10 ** 4
-set.seed(1)
-X <- data.frame(
-    row_ix = as.integer(runif(nnz, min = 1, max = nrow)),
-    col_ix = as.integer(runif(nnz, min = 1, max = ncol)),
-    count = rpois(nnz, 1) + 1)
-X <- X[!duplicated(X[, c("row_ix", "col_ix")]), ]
-
-### factorize the randomly-generated sparse matrix
-model <- poismf(X, nthreads = 1)
-
-### predict functionality
-predict(model, 1, 10) ## predict entry (1, 10)
-predict(model, 1, topN = 10) ## predict top-10 entries "B" for row 1 of "A".
-predict(model, c(1, 1, 1), c(4, 5, 6)) ## predict entries [1,4], [1,5], [1,6]
-head(predict(model, 1)) ## predict the whole row 1
-
-#all predictions for new row/user/doc
-head(predict(model, data.frame(col_ix = c(1,2,3), count = c(4,5,6)) ))
+}
+\description{
+Predict expected count for new row(user) and column(item) combinations
 }
 \seealso{
-\link{poismf} \link{predict_all}
+\link{poismf} \link{topN} \link{factors}
 }

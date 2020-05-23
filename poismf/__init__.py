@@ -1,79 +1,116 @@
 import pandas as pd, numpy as np
 import multiprocessing, os, warnings, ctypes
 from scipy.sparse import coo_matrix, csr_matrix, csc_matrix
-from .poismf_c_wrapper import run_pgd, _predict_multiple, _predict_factors
-pd.options.mode.chained_assignment = None
+from .poismf_c_wrapper import _run_poismf, _predict_multiple, \
+    _predict_factors, _predict_factors_multiple, \
+    _eval_llk_test, _call_topN
 
 class PoisMF:
     """
     Poisson Matrix Factorization
 
-    Fast and memory-efficient odel for recommending items based on Poisson factorization
-    on sparse count data (e.g. number of times a user played different songs),
-    using either proximal or conjugate gradient optimization procedures.
+    Fast and memory-efficient model for recommender systems based on Poisson
+    factorization of sparse counts data (e.g. number of times a user played different
+    songs), using either proximal gradient or conjugate gradient optimization procedures.
     
     If passing reindex=True, it will internally reindex all user and item IDs. Your data will not require
-    reindexing if the IDs for users and items in counts_df meet the following criteria:
+    reindexing if the IDs for users and items meet the following criteria:
 
-    1) Are all integers.
-    2) Start at zero.
-    3) Don't have any enumeration gaps, i.e. if there is a user '4', user '3' must also be there.
-
-    If you only want to obtain the fitted parameters and use your own API later for recommendations,
-    you can pass produce_dicts=False and pass a folder where to save them in csv format (they are also
-    available as numpy arrays in this object's A and B attributes). Otherwise, the model
-    will create Python dictionaries with entries for each user and item, which can take quite a bit of
-    RAM memory. These can speed up predictions later through this package's API.
+        1) Are all integers.
+        2) Start at zero.
+        3) Don't have any enumeration gaps, i.e. if there is a user '4', user '3' must also be there.
 
     Note
     ----
-    DataFrames and arrays passed to '.fit' might be modified inplace - if this is a problem you'll
-    need to pass a copy to them, e.g. 'counts_df=counts_df.copy()'.
+    This model is prone to numerical instability when using proximal gradient, and can
+    turn out to spit all NaNs or zeros in the fitted parameters. As an alternative, can
+    use a conjugate gradient approach instead, which is slower but
+    not susceptible to such failures.
 
     Note
     ----
-    This model is prone to numerical instability and can turn out to spit all NaNs or zeros in the fitted
-    parameters.
+    The default hyperparameters are geared towards very fast fitting times, and
+    might not be very competitive against other implicit-feedback methods when
+    used as-is. It's also possible to obtain better quality models that compare
+    very favorably against e.g. implicit-ALS/HPF/BPR/etc. by using a much larger
+    number of iterations and updates, lower regularization, and the conjugate gradient
+    option - this will take many times longer than with the default hyperparameters,
+    but usually it's still faster than other factorization models.
 
     Parameters
     ----------
     k : int
-        Number of latent factors to use.
+        Number of latent factors to use (dimensionality of the low-rank factorization).
+        Note that since this model deals with non-negative latent factors only and the
+        optimal number for every entry is a very small number (depending on sparsity
+        and regularization), the optimal ``k`` is likely to be low, while passing large
+        values (e.g. > 100) is likely to produce bad results. If passing large ``k``,
+        it's recommended to use ``use_cg=True``.
+    use_cg : bool
+        Whether to fit the model through conjugate gradient method. This is slower,
+        but less prone to failure, usually reaches better local optima, and is able
+        to fit models with lower regularization values.
     l2_reg : float
-        Strength of L2 regularization. Recommended to decrease for conjugate gradient.
+        Strength of L2 regularization. Proximal gradient method will likely fail
+        to fit when the regularization is too small, and the recommended value
+        is 10^9. Recommended to decrease it when using conjugate gradient method
+        to e.g. 10^5 or even zero. If passing "auto", will set it to 10^9 for
+        proximal gradient, and 10^5 for conjugate gradient.
     l1_reg : float
         Strength of L1 regularization. Not recommended.
     niter : int
-        Number of alternating iterations to perform (will perform two swaps per iteration).
-    npasses : int
-        Number of proximal  gradient updates to perform to each vector per iteration. Increasing the number
-        of iterations has the same computational complexity and is likely to produce better results. Ignored
-        for conjugate gradient method.
+        Number of alternating iterations to perform. One iteration denotes an update
+        over both matrices.
+    nupd : int
+            * When using proximal gradient, this is the number of proximal gradient
+              updates to perform to each vector per iteration. Increasing the number of
+              iterations instead of this has the same computational complexity and is
+              likely to produce better results.
+            * When using conjugate gradient, this is the maximum number of updates
+              per iteration, and it's recommended to set it to a larger value such
+              as 5 or 10, while perhaps decreasing ``niter`` (for faster fitting),
+              as it will perform a line search in this case. Alternatively, might
+              instead set ``nupd`` to 1 (in which case it becomes gradient descent)
+              and ``niter`` to a large number such as 100. If using large ``k``
+              and/or l1 regularization, it's recommended to increase ``nupd`` due
+              to the way constraints are handled in the CG method (see
+              reference [2] for details) - e.g. if using ``k=100``, set ``nupd=25``,
+              and maybe also ``niter=50`` too.
     initial_step : float
-        Initial step size to use (ignored for conjugate gradient method).
-    use_cg : bool
-        Whether to fit the model through conjugate gradient method (slower, but less prone to failure).
+        Initial step size to use. Larger step sizes reach converge faster, but are
+        more likely to result in failed optimization. Ignored for conjugate gradient
+        as it uses a line search instead.
+    weight_mult : float > 0
+        Extra multiplier for the weight of the positive entries over the missing
+        entries in the matrix to factorize. Be aware that Poisson likelihood will
+        implicitly put more weight on the non-missing entries already. Passing larger
+        values will make the factors have larger values (which might be desirable),
+        and can help with instability and failed optimization cases. If passing this,
+        it's recommended to try very large values (e.g. 10^2), and might require
+        adjusting the other hyperparameters. Not recommended.
     init_type : str
-        How to initialize the model parameters. One of 'gamma' (will initialize them ~ Gamma(1, 1))
-        or 'unif' (will initialize them ~ Unif(0, 1)).
-    random_seed : int
-        Random seed to use to initialize model parameters.
+        How to initialize the model parameters. One of 'gamma' (will initialize
+        them `~ Gamma(1, 1))` or 'unif' (will initialize them `~ Unif(0, 1))`.
+    random_state : int, RandomState, or Generator
+        Random seed to use to initialize model parameters. If passing a NumPy
+        'RandomState', will use it to draw a random integer as initial seed.
+        If passing a NumPy 'Generator', will use it directly for drawing
+        random numbers.
+    reindex : bool
+        Whether to reindex data internally. Will be ignored if passing a sparse
+        COO matrix to 'fit'.
+    copy_data : bool
+        Whether to make deep copies of the data in order to avoid modifying it in-place.
+        Passing 'False' is faster, but might modify the 'X' inputs in-place if they
+        are DataFrames.
+    produce_dicts : bool
+        Whether to produce Python dictionaries for users and items, which
+        are used to speed-up the prediction API of this package. You can still
+        predict without them, but it might take some additional miliseconds
+        (or more depending on the number of users and items).
     nthreads : int
         Number of threads to use to parallelize computations.
         If set to 0 or less, will use the maximum available on the computer.
-    reindex : bool
-        Whether to reindex data internally.
-    keep_data : bool
-        Whether to keep information about which user was associated with each item
-        in the training set, so as to exclude those items later when making Top-N
-        recommendations.
-    save_folder : str or None
-        Folder where to save all model parameters as csv files.
-    produce_dicts : bool
-        Whether to produce Python dictionaries for users and items, which
-        are used to speed-up the prediction API of this package. You can still predict without
-        them, but it might take some additional miliseconds (or more depending on the
-        number of users and items).
     
     Attributes
     ----------
@@ -94,25 +131,35 @@ class PoisMF:
 
     References
     ----------
-    [1] Cortes, David. "Fast Non-Bayesian Poisson Factorization for Implicit-Feedback Recommendations." arXiv preprint arXiv:1811.01908 (2018).
+    .. [1] Cortes, David.
+           "Fast Non-Bayesian Poisson Factorization for Implicit-Feedback Recommendations."
+           arXiv preprint arXiv:1811.01908 (2018).
+    .. [2] Li, Can.
+           "A conjugate gradient type method for the nonnegative constraints optimization problems."
+           Journal of Applied Mathematics 2013 (2013).
     """
-    def __init__(self, k = 40, l2_reg = 1e9, l1_reg = 0.0, niter = 10, npasses = 1, initial_step = 1e-7,
-                 use_cg = False, init_type = 'gamma', random_seed = 1, nthreads = -1,
-                 reindex=True, keep_data = True, save_folder = None, produce_dicts = True):
+    def __init__(self, k = 30, use_cg = False, l2_reg = "auto", l1_reg = 0.0,
+                 niter = 10, nupd = "auto", initial_step = 1e-7,
+                 weight_mult = 1.0, init_type = "gamma", random_state = 1,
+                 reindex = True, copy_data = True, produce_dicts = False,
+                 nthreads = -1):
+        ## default hyperparameters
+        if l2_reg == "auto":
+            l2_reg = 1e5 if use_cg else 1e9
+        if nupd == "auto":
+            nupd = 5 if use_cg else 1
 
-        ## checking input
+        ## checking inputs
         assert k > 0
-        assert isinstance(k, int)
+        assert isinstance(k, int) or isinstance(k, np.int64)
         assert niter >= 1
-        assert npasses >= 1
-        assert isinstance(niter, int)
-        assert isinstance(npasses, int)
-        assert l2_reg >= 0
-        assert l1_reg >= 0
-        assert initial_step > 0
-        assert isinstance(l2_reg, float)
-        assert isinstance(l1_reg, float)
-        assert isinstance(initial_step, float)
+        assert nupd >= 1
+        assert isinstance(niter, int) or isinstance(niter, np.int64)
+        assert isinstance(nupd, int) or isinstance(nupd, np.int64)
+        assert l2_reg >= 0.
+        assert l1_reg >= 0.
+        assert initial_step > 0.
+        assert weight_mult > 0.
         assert init_type in ['gamma', 'unif']
         
         if nthreads < 1:
@@ -120,63 +167,61 @@ class PoisMF:
         if nthreads is None:
             nthreads = 1
         assert nthreads > 0
-        assert isinstance(nthreads, int)
+        assert isinstance(nthreads, int) or isinstance(nthreads, np.int64)
 
-        if random_seed is not None:
-            assert isinstance(random_seed, int)
+        if isinstance(random_state, np.random.RandomState):
+            random_state = random_state.randint(np.iinfo(np.int32).max)
+        elif random_state is None:
+            random_state = np.random.default_rng()
+        elif isinstance(random_state, int) or isinstance(random_state, float):
+            random_state = np.random.default_rng(seed=int(random_state))
         else:
-            random_seed = np.random.randint(int(1e5)) + 1
-        assert random_seed > 0
-        assert isinstance(random_seed, int)
-            
-        if save_folder is not None:
-            save_folder = os.path.expanduser(save_folder)
-            assert os.path.exists(save_folder)
+            if not isinstance(random_state, np.random.Generator):
+                raise ValueError("Invalid 'random_state'.")
         
         ## storing these parameters
         self.k = k
-        self.l1_reg = l1_reg
-        self.l2_reg = l2_reg
-        self.initial_step = initial_step
-        self.random_seed = random_seed
+        self.l1_reg = float(l1_reg)
+        self.l2_reg = float(l2_reg)
+        self.initial_step = float(initial_step)
+        self.weight_mult = float(weight_mult)
         self.init_type = init_type
         self.niter = niter
-        self.npasses = npasses
+        self.nupd = nupd
         self.use_cg = int(bool(use_cg))
         self.nthreads = nthreads
 
         self.reindex = bool(reindex)
-        self.keep_data = bool(keep_data)
-        self.save_folder = save_folder
         self.produce_dicts = bool(produce_dicts)
         if not self.reindex:
             self.produce_dicts = False
+        self.random_state = random_state
+        self.copy_data = bool(copy_data)
         
-        ## initializing other attributes
-        self.A = None
-        self.B = None
-        self.user_mapping_ = None
-        self.item_mapping_ = None
-        self.user_dict_ = None
-        self.item_dict_ = None
+        self._reset_state()
+
+    def _reset_state(self):
+        self.A = np.empty((0,0), dtype=ctypes.c_double)
+        self.B = np.empty((0,0), dtype=ctypes.c_double)
+        self.user_mapping_ = np.empty(0, dtype=object)
+        self.item_mapping_ = np.empty(0, dtype=object)
+        self.user_dict_ = dict()
+        self.item_dict_ = dict()
         self.is_fitted = False
     
-    def fit(self, counts_df):
+    def fit(self, X):
         """
-        Fit Poisson Model to sparse count data
-        
-        Note
-        ----
-        DataFrames and arrays passed to '.fit' might be modified inplace - if this is a problem you'll
-        need to pass a copy to them, e.g. 'counts_df=counts_df.copy()'.
+        Fit Poisson Model to sparse counts data
 
         Parameters
         ----------
-        counts_df : pandas data frame (nobs, 3) or coo_matrix
-            Input data with one row per non-zero observation, consisting of triplets ('UserId', 'ItemId', 'Count').
-            Must containin columns 'UserId', 'ItemId', and 'Count'.
-            Combinations of users and items not present are implicitly assumed to be zero by the model.
-            Can also pass a sparse coo_matrix, in which case 'reindex' will be forced to 'False'.
+        X : Pandas DataFrame (nobs, 3) or COO(m, n)
+            Counts atrix to factorize, in sparse triplets format. Can be passed either
+            as a SciPy sparse COO matrix (recommended) with users being rows and
+            items being columns, or as a Pandas DataFrame, in which case it should
+            have the following columns: 'UserId', 'ItemId', 'Count'.
+            Combinations of users and items not present are implicitly assumed to be zero by the model. The non-missing entries must all be greater than zero.
+            If passing a COO matrix, will force 'reindex' to 'False'.
 
         Returns
         -------
@@ -185,342 +230,374 @@ class PoisMF:
         """
 
         ## running each sub-process
-        self._process_data(counts_df)
-        self._write_parameters()
+        self._reset_state()
+        csr, csc = self._process_data(X)
         self._initialize_matrices()
-        self._fit()
+        self._fit(csr, csc)
+        self._produce_dicts()
         
-        ## after terminating optimization
-        if self.keep_data:
-            self._store_metadata()
-        if self.produce_dicts and self.reindex:
-            self.user_dict_ = {self.user_mapping_[i]:i for i in range(self.user_mapping_.shape[0])}
-            self.item_dict_ = {self.item_mapping_[i]:i for i in range(self.item_mapping_.shape[0])}
         self.is_fitted = True
-        del self._csr
-        del self._csc
-        
         return self
-
-    def _write_parameters(self):
-        if self.save_folder is not None:
-            with open(os.path.join(self.save_folder, "hyperparameters.txt"), "w") as pf:
-                pf.write("l1_reg: %.10f\n" % self.l1_reg)
-                pf.write("l2_reg: %.10f\n" % self.l2_reg)
-                pf.write("initial_step: %.10f\n" % self.initial_step)
-                pf.write("use_cg: %s\n" % self.use_cg)
-                pf.write("niter: %d\n" % self.niter)
-                pf.write("npasses: %d\n" % self.npasses)
-                pf.write("k: %d\n" % self.k)
-                if self.random_seed is not None:
-                    pf.write("random seed: %d\n" % self.random_seed)
-                else:
-                    pf.write("random seed: None\n")
     
-    def _process_data(self, input_df):
-        calc_n = True
-        is_coo = False
+    def _process_data(self, X):
+        if self.copy_data:
+            X = X.copy()
 
-        if isinstance(input_df, np.ndarray):
-            assert len(input_df.shape) > 1
-            assert input_df.shape[1] >= 3
-            self.input_df = pd.DataFrame(input_df[:, :3])
-            self.input_df.columns = ['UserId', 'ItemId', "Count"]
-            
-        elif input_df.__class__.__name__ == 'DataFrame':
-            assert input_df.shape[0] > 0
-            assert 'UserId' in input_df.columns.values
-            assert 'ItemId' in input_df.columns.values
-            assert 'Count'  in input_df.columns.values
-            self.input_df = input_df[['UserId', 'ItemId', 'Count']]
-            
-        elif input_df.__class__.__name__ == 'coo_matrix':
-            self.nusers = input_df.shape[0]
-            self.nitems = input_df.shape[1]
-            self._coo = self.input_df
+        if X.__class__.__name__ == 'coo_matrix':
+            self.nusers = X.shape[0]
+            self.nitems = X.shape[1]
             self.reindex = False
-            calc_n = False
-            is_coo = True
-        else:
-            raise ValueError("'input_df' must be a pandas data frame, numpy array, or scipy sparse coo_matrix.")
+            coo = X
 
-        if is_coo:
-            obs_zero = self._coo.data <= 0
-        else:
-            obs_zero = self.input_df.Count.values <= 0
-        if obs_zero.sum() > 0:
-            msg = "'counts_df' contains observations with a count value less than 1, these will be ignored."
-            msg += " Any user or item associated exclusively with zero-value observations will be excluded."
-            msg += " If using 'reindex=False', make sure that your data still meets the necessary criteria."
-            warnings.warn(msg)
-            if is_coo:
-                self._coo = coo_matrix((self._coo.data[~obs_zero], (self._coo.row[~obs_zero], self._coo.col[~obs_zero])))
-                self.nusers = input_df.shape[0]
-                self.nitems = input_df.shape[1]
-            else:
-                self.input_df = self.input_df.loc[~obs_zero]
+        elif X.__class__.__name__ == 'DataFrame':
+            cols_require = ["UserId", "ItemId", "Count"]
+            cols_missing = np.setdiff1d(np.array(cols_require),
+                                        X.columns.values)
+            if cols_missing.shape[0]:
+                raise ValueError("'X' should have columns: " + ", ".join(cols_require))
             
-        if self.reindex:
-            self.input_df['UserId'], self.user_mapping_ = pd.factorize(self.input_df.UserId)
-            self.input_df['ItemId'], self.item_mapping_ = pd.factorize(self.input_df.ItemId)
-            ### https://github.com/pandas-dev/pandas/issues/30618
-            if self.user_mapping_.__class__.__name__ == "CategoricalIndex":
+            if self.reindex:
+                X['UserId'], self.user_mapping_ = pd.factorize(X.UserId)
+                X['ItemId'], self.item_mapping_ = pd.factorize(X.ItemId)
+                ### https://github.com/pandas-dev/pandas/issues/30618
                 self.user_mapping_ = self.user_mapping_.to_numpy()
-            if self.item_mapping_.__class__.__name__ == "CategoricalIndex":
                 self.item_mapping_ = self.item_mapping_.to_numpy()
-            self.nusers = self.user_mapping_.shape[0]
-            self.nitems = self.item_mapping_.shape[0]
-            self.user_mapping_ = np.array(self.user_mapping_).reshape(-1)
-            self.item_mapping_ = np.array(self.item_mapping_).reshape(-1)
-            if (self.save_folder is not None) and self.reindex:
-                pd.Series(self.user_mapping_).to_csv(os.path.join(self.save_folder, 'users.csv'), index=False)
-                pd.Series(self.item_mapping_).to_csv(os.path.join(self.save_folder, 'items.csv'), index=False)
+                self.user_mapping_ = self.user_mapping_
+                self.item_mapping_ = self.item_mapping_
+
+            coo = coo_matrix((X.Count, (X.UserId, X.ItemId)))
+
         else:
-            if calc_n:
-                self.nusers = self.input_df.UserId.max() + 1
-                self.nitems = self.input_df.ItemId.max() + 1
+            raise ValueError("'X' must be a pandas DataFrame or SciPy COO matrix.")
 
-        if not is_coo:
-            self._coo = coo_matrix((self.input_df.Count, (self.input_df.UserId, self.input_df.ItemId)))
-            del self.input_df
+        self.nusers, self.nitems = coo.shape[0], coo.shape[1]
+        csr = csr_matrix(coo)
+        csc = csc_matrix(coo)
 
-        self._csr = csr_matrix(self._coo)
-        self._csc = csc_matrix(self._coo)
-        del self._coo
+        csr.indptr  = csr.indptr.astype(ctypes.c_size_t)
+        csr.indices = csr.indices.astype(ctypes.c_size_t)
+        csr.data    = csr.data.astype(ctypes.c_double)
+        csc.indptr  = csc.indptr.astype(ctypes.c_size_t)
+        csc.indices = csc.indices.astype(ctypes.c_size_t)
+        csc.data    = csc.data.astype(ctypes.c_double)
 
-        self._csr.indptr  = self._csr.indptr.astype(ctypes.c_size_t)
-        self._csr.indices = self._csr.indices.astype(ctypes.c_size_t)
-        self._csr.data    = self._csr.data.astype(ctypes.c_double)
-        self._csc.indptr  = self._csc.indptr.astype(ctypes.c_size_t)
-        self._csc.indices = self._csc.indices.astype(ctypes.c_size_t)
-        self._csc.data    = self._csc.data.astype(ctypes.c_double)
-
-        return None
+        return csr, csc
             
-    def _store_metadata(self):
-        ### https://github.com/numpy/numpy/issues/8333
-        self._n_seen_by_user = (self._csr.indptr[1:] - self._csr.indptr[:-1]).astype(int)
-        self._st_ix_user = self._csr.indptr[:-1].astype(int)
-        self._seen = self._csr.indices.astype(int)
 
     def _initialize_matrices(self):
-        np.random.seed(self.random_seed)
         if self.init_type == "gamma":
-            self.A = np.random.gamma(1, 1, size = (self.nusers, self.k))
-            self.B = np.random.gamma(1, 1, size = (self.nitems, self.k))
+            self.A = -np.log( self.random_state.random(size = (self.nusers, self.k)) )
+            self.B = -np.log( self.random_state.random(size = (self.nitems, self.k)) )
         else:
-            self.A = np.random.random(size = (self.nusers, self.k))
-            self.B = np.random.random(size = (self.nitems, self.k))
+            self.A = self.random_state.random(size = (self.nusers, self.k))
+            self.B = self.random_state.random(size = (self.nitems, self.k))
     
-    def _fit(self):
-        run_pgd(
-            self._csr.data, self._csr.indices, self._csr.indptr,
-            self._csc.data, self._csc.indices, self._csc.indptr,
+    def _fit(self, csr, csc):
+        _run_poismf(
+            csr.data, csr.indices, csr.indptr,
+            csc.data, csc.indices, csc.indptr,
             self.A, self.B,
-            self.use_cg, self.l2_reg, self.l1_reg,
-            self.initial_step, self.niter, self.npasses, self.nthreads)
+            self.use_cg, self.l2_reg, self.l1_reg, self.weight_mult,
+            self.initial_step, self.niter, self.nupd, self.nthreads)
         self.Bsum = self.B.sum(axis = 0).reshape(-1).astype(ctypes.c_double) + self.l1_reg
 
-    def _process_data_single(self, counts_df):
-        assert self.is_fitted
-        if isinstance(counts_df, np.ndarray):
-            assert len(counts_df.shape) > 1
-            assert counts_df.shape[1] >= 2
-            counts_df = counts_df.values[:,:2]
-            counts_df.columns = ['ItemId', "Count"]
-            
-        if counts_df.__class__.__name__ == 'DataFrame':
-            assert counts_df.shape[0] > 0
-            assert 'ItemId' in counts_df.columns.values
-            assert 'Count' in counts_df.columns.values
-            counts_df = counts_df[['ItemId', 'Count']]
-        else:
-            raise ValueError("'counts_df' must be a pandas data frame or a numpy array")
-            
-        if self.reindex:
-            if self.produce_dicts:
-                try:
-                    counts_df['ItemId'] = counts_df.ItemId.map(lambda x: self.item_dict_[x])
-                except:
-                    raise ValueError("Can only make calculations for items that were in the training set.")
-            else:
-                counts_df['ItemId'] = pd.Categorical(counts_df.ItemId.values, self.item_mapping_).codes
-                if (counts_df.ItemId == -1).sum() > 0:
-                    raise ValueError("Can only make calculations for items that were in the training set.")
-
-        counts_df['ItemId'] = counts_df.ItemId.values.astype(ctypes.c_size_t)
-        counts_df['Count']  = counts_df.Count.values.astype(ctypes.c_double)
-        return counts_df
-
-    def predict_factors(self, counts_df, random_seed=1, l2_reg=1e3, l1_reg=0):
+    def fit_unsafe(self, A, B, Xcsr, Xcsc):
         """
-        Gets latent factors for a user given her item counts
+        Faster version for 'fit' with no input checks or castings
 
-        This is similar to obtaining topics for a document in LDA.
+        This is intended as a faster alternative to ``fit`` when a model
+        is to be fit multiple times with different hyperparameters. It will
+        not make any checks or conversions on the inputs, as it will assume
+        they are all in the right format.
+
+        **Passing the wrong types of inputs or passing inputs with mismatching
+        shapes will crash the Python process**. For most use cases, it's
+        recommended to use ``fit`` instead.
 
         Note
         ----
-        This function will NOT modify any of the item parameters.
-
-        Note
-        ----
-        This function only works with one user at a time.
-
-        Note
-        ----
-        This function is prone to producing all zeros or all NaNs values.
+        Calling this will override ``produce_dicts`` and ``reindex`` (will set
+        both to ``False``).
 
         Parameters
         ----------
-        counts_df : DataFrame or array (nsamples, 2)
-            Data Frame with columns 'ItemId' and 'Count', indicating the non-zero item counts for a
-            user for whom it's desired to obtain latent factors.
-        random_seed : int
-            Random seed used to initialize parameters.
+        A : array(dimA, k)
+            The already-intialized user-factor matrices, as a NumPy array
+            of type C dobule (this is usually ``np.float64``) in row-major
+            order (a.k.a. C contiguous). Should **not** be a view/subset of a
+            larger array (flag 'OWN_DATA'). Will be modified in-place.
+        B : array(dimB, k)
+            The already-initialized  item-factor matrices (see documentation
+            about ``A`` for details on the format).
+        Xcsr : CSR(dimA, dimB)
+            The 'X' matrix to factorize in sparse CSR format (from SciPy).
+            Must have the ``indices`` and ``indptr`` as type C size_t (this is
+            usually ``np.uint64``). Note that setting them to this type might
+            render the matrices unusable in SciPy's own sparse module functions.
+            The ``data`` part must be of type  C double (this is usually
+            ``np.float64``).
+        Xcsc : CSC(dimA, dimB)
+            The 'X' matrix to factorize in sparse CSC format (from SciPy).
+            See documentation about ``Xcsr`` for details.
+        
+        Returns
+        -------
+        self : obj
+            This object
+        """
+        self.A = A
+        self.B = B
+        self.nusers = A.shape[0]
+        self.nitems = B.shape[0]
+        self.reindex = False
+        self.produce_dicts = False
+        self.init_type = "custom"
+        self._fit(Xcsr, Xcsc)
+        self.is_fitted = True
+        return self
+
+    def _produce_dicts(self):
+        if self.produce_dicts and self.reindex:
+            self.user_dict_ = {self.user_mapping_[i]:i for i in range(self.user_mapping_.shape[0])}
+            self.item_dict_ = {self.item_mapping_[i]:i for i in range(self.item_mapping_.shape[0])}
+
+    def predict_factors(self, X, l2_reg=1e5, l1_reg=0., weight_mult=1., nupd=100):
+        """
+        Get latent factors for a new user given her item counts
+
+        This is similar to obtaining topics for a document in LDA. See also
+        method 'transform' for getting factors for multiple users/rows at
+        a time.
+
+        Note
+        ----
+        This function works with one user at a time, and will use a
+        conjugate gradient approach regardless of how the model was fit.
+        As well, it will use the regularization parameter passed here instead of
+        the original one from the model, which means the obtained factors might
+        not end up being in the same scale as the original ones which are stored
+        under 'self.A'. See function 'transform' for a different approach using
+        the same method with which the model was fit.
+
+        Note
+        ----
+        Be aware that the proximal gradient method, which is the default for fitting
+        the model and which doesn't try to reach global optima, requires larger
+        regularization, whereas the conjugate gradient method, which tries to find the
+        global optimum, will fail to fit with too larger regularization (i.e. the
+        optimal will be all-zeros).
+
+        Note
+        ----
+        The factors are initialized to the mean of each column in the fitted model.
+
+        Parameters
+        ----------
+        X : DataFrame or tuple(2)
+            Either a DataFrame with columns 'ItemId' and 'Count', indicating the non-zero item counts for a user for whom it's desired to obtain latent
+            factors, or a tuple with the first entry being the items/columns that
+            have a non-zero count, and the second entry being the actual counts.
         l2_reg : float
-            Strenght of L2 regularization to use for optimizing the new factors. Note that these are
-            obtained through a conjugate-gradient method instrad of proximal-gradient, which works better
-            with smaller regularization values.
+            Strength of L2 regularization to use for optimizing the new factors. Note
+            that these are obtained through a conjugate-gradient method instead of
+            proximal gradient, which works better with smaller regularization values.
         l1_reg : float
             Strength of the L1 regularization (see description of argument above).
+            Not recommended.
+        weight_mult : float
+            Weight multiplier for the positive entries over the missing entries.
+            Not recommended.
+        nupd : int > 0
+            Maximum number of conjugate gradient updates.
 
         Returns
         -------
         latent_factors : array (k,)
             Calculated latent factors for the user, given the input data
         """
-        return self._predict_factors(counts_df, random_seed, False, l2_reg, l1_reg)
-
-    def _predict_factors(self, counts_df, random_seed=1, return_counts=False, l2_reg=1e3, l1_reg=0):
-        if random_seed is None:
-            random_seed = np.random.randint(int(1e5)) + 1
-        assert isinstance(random_seed, int)
-        assert random_seed > 0
-        assert l2_reg >= 0
-        assert l1_reg >= 0
-
-        ## processing the data
-        counts_df = self._process_data_single(counts_df)
-
-        ## calculating the latent factors
-        if self.init_type == "gamma":
-            a_vec = np.random.gamma(1, 1, size = self.k)
-        else:
-            a_vec = np.random.random(size = self.k)
-        _predict_factors(a_vec, counts_df.Count.values, counts_df.ItemId.values,
-                         self.B, self.Bsum, l2_reg, l1_reg)
-        ### Note: don't confuse with 'self._predict_factors'
-
+        assert weight_mult > 0.
+        ix, cnt = self._process_data_single(X)
+        l2_reg, l1_reg = self._process_reg_params(l2_reg, l1_reg)
+        a_vec = _predict_factors(self.A, cnt, ix,
+                                 self.B, self.Bsum,
+                                 int(nupd),
+                                 float(l2_reg),
+                                 float(l1_reg), float(self.l1_reg),
+                                 float(weight_mult))
         if np.any(np.isnan(a_vec)):
             raise ValueError("NaNs encountered in the result. Failed to produce latent factors.")
         if np.max(a_vec) <= 0:
             raise ValueError("Optimization failed. Could not calculate latent factors.")
+        return a_vec
 
-        if return_counts:
-            return a_vec, counts_df
+    def _process_data_single(self, X):
+        assert self.is_fitted
+
+        if self.copy_data:
+            X = X.copy()
+
+        if X.__class__.__name__ == 'DataFrame':
+            assert X.shape[0] > 0
+            assert 'ItemId' in X.columns.values
+            assert 'Count' in X.columns.values
+            X = [X.ItemId.to_numpy(), X.Count.to_numpy()]
+        elif isinstance(X, tuple) or isinstance(X, list):
+            X = [np.array(X[0]), np.array(X[1])]
+            if X[0].shape[0] != X[1].shape[0]:
+                raise ValueError("'X' must have the same number of entries for items and counts.")
         else:
-            return a_vec
+            raise ValueError("'X' must be a DataFrame or tuple.")
 
-    def add_user(self, user_id, counts_df, update_existing=False, random_seed=1, l2_reg=1e3, l1_reg=0):
+        if self.reindex:
+            X[0] = pd.Categorical(X[0], self.item_mapping_).codes
+        imin, imax = X[0].min(), X[0].max()
+        if (imin < 0) or (imax >= self.nitems):
+            raise ValueError("'X' contains invalid items.")
+
+        if X[0].dtype != ctypes.c_size_t:
+            X[0] = X[0].astype(ctypes.c_size_t)
+        if X[1].dtype != ctypes.c_double:
+            X[1] = X[1].astype(ctypes.c_double)
+
+        return X[0], X[1]
+
+    def _process_reg_params(self, l2_reg, l1_reg):
+        if isinstance(l2_reg, int) or  isinstance(l2_reg, np.int64):
+            l2_reg = float(l2_reg)
+        if isinstance(l1_reg, int) or isinstance(l1_reg, np.int64):
+            l1_reg = float(l1_reg)
+        assert isinstance(l1_reg, float)
+        assert isinstance(l2_reg, float)
+        return l2_reg, l1_reg
+
+    def transform(self, X, y=None):
         """
-        Add a new user to the model or update parameters for a user according to new data
+        Determine latent factors for new rows/users
+
+        Note
+        ----
+        This function will use the same method and hyperparameters with which the
+        model was fit. If using this for recommender systems, it's recommended
+        to use instead the function 'predict_factors', even though the new factors
+        obtained with that function might not end up being in the same scale as
+        the original factors in 'self.A'.
+
+        Note
+        ----
+        When using proximal gradient method (the default), results from this function
+        and from 'fit' on the same datamight differ a lot. If this is a problem, it's
+        recommended to use conjugate gradient instead.
+
+        Note
+        ----
+        This function is prone to producing all zeros or all NaNs values.
+
+        Note
+        ----
+        The factors are initialized to the mean of each column in the fitted model.
         
-        Note
-        ----
-        This function will NOT modify any of the item parameters.
-
-        Note
-        ----
-        This function can be run in parallel (through Python's joblib with shared memory) if using 'keep_data = False'
-
-        Note
-        ----
-        This function is prone to producing all-zeros factors. For betters results, refit the model again from scratch.
-
         Parameters
         ----------
-        user_id : obj
-            Id to give to be user (when adding a new one) or Id of the existing user whose parameters are to be
-            updated according to the data in 'counts_df'. **Make sure that the data type is the same that was passed
-            in the training data, so if you have integer IDs, don't pass a string as ID**.
-        counts_df : data frame or array (nsamples, 2)
-            Data Frame with columns 'ItemId' and 'Count'. If passing a numpy array, will take the first two columns
-            in that order. Data containing user/item interactions **from one user only** for which to add or update
-            parameters. Note that you need to pass *all* the user-item interactions for this user when making an update,
-            not just the new ones.
-        update_existing : bool
-            Whether this should be an update of the parameters for an existing user (when passing True), or
-            an addition of a new user that was not in the model before (when passing False).
-        random_seed : int
-            Random seed used to initialize parameters.
-        l2_reg : float
-            Strenght of L2 regularization to use for optimizing the new factors. Note that these are
-            obtained through a conjugate-gradient method instrad of proximal-gradient, which works better
-            with smaller regularization values.
-        l1_reg : float
-            Strength of the L1 regularization (see description of argument above).
+        X : DataFrame(nnz, 3), CSR(n_new, nitems), or COO(n_new, nitems)
+            New matrix for which to determine latent factors. The items/columns
+            must be the same ones as passed to 'fit', while the rows correspond
+            to new entries that were not passed to 'fit'.
+                * If passing a DataFrame, must have columns 'UserId', 'ItemId', 'Count'.
+                  The 'UserId' column will be remapped, with the mapping returned as
+                  part of the output.
+                * If passing a COO matrix, will be casted to CSR.
+                * If passing a CSR matrix (recommended), will use it as-is and will
+                  not return a mapping as the output will match row-by-row with 'X'.
+        y : None
+            Ignored. Kept in place for compatibility with SciKit-Learn pipelining.
 
         Returns
         -------
-        True : bool
-            Will return True if the process finishes successfully.
+        A_new : array(n_new, k)
+            The obtained latent factors for each row of 'X'.
+        user_mapping : array(n_new)
+            The mapping from 'UserId' in 'X' to rows of 'A_new'. Only
+            produced when passing 'X' as a DataFrame, in which case the
+            output will be a tuple '(A_new, user_mapping_)'.
         """
-        if update_existing:
-            ## checking that the user already exists
-            if self.produce_dicts and self.reindex:
-                user_id = self.user_dict_[user_id]
-            else:
-                if self.reindex:
-                    user_id = pd.Categorical(np.array([user_id]), self.user_mapping_).codes[0]
-                    if user_id == -1:
-                        raise ValueError("User was not present in the training data.")
+        assert self.is_fitted
+        assert X.shape[0] > 0
+        Xr_indptr, Xr_indices, Xr, user_mapping_ = self._process_X_new_users(X)
+        A = _predict_factors_multiple(
+            self.A,
+            self.B,
+            self.Bsum,
+            Xr_indptr,
+            Xr_indices,
+            Xr,
+            self.l2_reg,
+            self.weight_mult,
+            self.initial_step,
+            self.niter,
+            self.nupd,
+            self.use_cg,
+            self.nthreads
+        )
 
-        ## calculating the latent factors
-        # Theta = np.empty(self.k, dtype = ctypes.c_float)
-        a_vec, counts_df = self._predict_factors(counts_df, random_seed, True, l2_reg, l1_reg)
+        if user_mapping_.shape[0]:
+            return A, user_mapping_
+        else:
+            return A
 
-        ## adding the data to the model
-        if update_existing:
-            self.A[user_id] = a_vec
+    def _process_X_new_users(self, X):
+        if self.copy_data:
+            X = X.copy()
+
+        if X.__class__.__name__ == "DataFrame":
+            cols_require = ["UserId", "ItemId", "Count"]
+            if np.setdiff1d(np.array(cols_require), X.columns.values).shape[0]:
+                raise ValueError("'X' must contain columns " + ", ".join(cols_require))
+            X["UserId"], user_mapping_ = pd.factorize(X.UserId)
+            if self.reindex:
+                X["ItemId"] = pd.Categorical(X.ItemId, self.item_mapping_).codes
+            X = csr_matrix(coo_matrix((X.Count, (X.UserId, X.ItemId))))
         else:
             if self.reindex:
-                new_id = self.user_mapping_.shape[0]
-                self.user_mapping_ = np.r_[self.user_mapping_, user_id]
-                if self.produce_dicts:
-                    self.user_dict_[user_id] = new_id
-            self.A = np.r_[self.A, a_vec.reshape((1, self.k))]
-            self.nusers += 1
+                raise ValueError("'X' must be a DataFrame if using 'reindex=True'.")
+            if X.__class__.__name__ == "coo_matrix":
+                X = csr_matrix(X)
+            elif X.__class__.__name__ != "csr_matrix":
+                raise ValueError("'X' must be a DataFrame, CSR matrix, or COO matrix.")
+            user_mapping_ = np.empty(0, dtype=int)
 
-        ## updating the list of seen items for this user
-        if self.keep_data:
-            if update_existing:
-                n_seen_by_user_before = self._n_seen_by_user[user_id]
-                self._n_seen_by_user[user_id] = counts_df.shape[0]
-                self._seen = np.r_[self._seen[:user_id], counts_df.ItemId.values, self._seen[(user_id + 1):]]
-                self._st_ix_user[(user_id + 1):] += self._n_seen_by_user[user_id] - n_seen_by_user_before
-            else:
-                self._n_seen_by_user = np.r_[self._n_seen_by_user, counts_df.shape[0]]
-                self._st_ix_user = np.r_[self._st_ix_user, self._seen.shape[0]]
-                self._seen = np.r_[self._seen, counts_df.ItemId.values]
+        if X.shape[1] > self.nitems:
+            raise ValueError("'X' must have the same columns (items) as passed to 'fit'.")
 
-        return True
+        return (
+            X.indptr.astype(ctypes.c_size_t),
+            X.indices.astype(ctypes.c_size_t),
+            X.data.astype(ctypes.c_double),
+            user_mapping_
+            )
+
     
     def predict(self, user, item):
         """
-        Predict count for combinations of users and items
+        Predict expected count for combinations of users (rows) and items (columns)
         
         Note
         ----
         You can either pass an individual user and item, or arrays representing
         tuples (UserId, ItemId) with the combinatinons of users and items for which
-        to predict (one row per prediction).
+        to predict (one entry per prediction).
 
         Parameters
         ----------
         user : array-like (npred,) or obj
             User(s) for which to predict each item.
         item: array-like (npred,) or obj
-            Item(s) for which to predict for each user.
+            Item(s) for which to predict for each user. Each entry will
+            be matched with the corresponding entry in ``user``.
+        
+        Returns
+        -------
+        pred : array(npred,)
+            Expected counts for the requested user(row)/item(column) combinations.
         """
         assert self.is_fitted
         if isinstance(user, list) or isinstance(user, tuple):
@@ -528,9 +605,9 @@ class PoisMF:
         if isinstance(item, list) or isinstance(item, tuple):
             item = np.array(item)
         if user.__class__.__name__=='Series':
-            user = user.values
+            user = user.to_numpy()
         if item.__class__.__name__=='Series':
-            item = item.values
+            item = item.to_numpy()
             
         if isinstance(user, np.ndarray):
             if len(user.shape) > 1:
@@ -540,7 +617,7 @@ class PoisMF:
                 if user.shape[0] > 1:
                     user = pd.Categorical(user, self.user_mapping_).codes
                 else:
-                    if self.user_dict_ is not None:
+                    if len(self.user_dict_):
                         try:
                             user = self.user_dict_[user]
                         except:
@@ -549,7 +626,7 @@ class PoisMF:
                         user = pd.Categorical(user, self.user_mapping_).codes[0]
         else:
             if self.reindex:
-                if self.user_dict_ is not None:
+                if len(self.user_dict_):
                     try:
                         user = self.user_dict_[user]
                     except:
@@ -566,7 +643,7 @@ class PoisMF:
                 if item.shape[0] > 1:
                     item = pd.Categorical(item, self.item_mapping_).codes
                 else:
-                    if self.item_dict_ is not None:
+                    if len(self.item_dict_):
                         try:
                             item = self.item_dict_[item]
                         except:
@@ -575,7 +652,7 @@ class PoisMF:
                         item = pd.Categorical(item, self.item_mapping_).codes[0]
         else:
             if self.reindex:
-                if self.item_dict_ is not None:
+                if len(self.item_dict_):
                     try:
                         item = self.item_dict_[item]
                     except:
@@ -587,12 +664,12 @@ class PoisMF:
         assert user.shape[0] == item.shape[0]
         
         if user.shape[0] == 1:
-            if (user[0] == -1) or (item[0] == -1):
+            if (user[0] < 0) or (item[0] < 0) or (user[0] >= self.nusers) or (item[0] >= self.nitems):
                 return np.nan
             else:
                 return self.A[user].dot(self.B[item].T).reshape(-1)[0]
         else:
-            nan_entries = (user == -1) | (item == -1)
+            nan_entries = (user  < 0) | (item < 0) | (user >= self.nusers) | (item >= self.nitems)
             if np.any(nan_entries):
                 if user.dtype != ctypes.c_size_t:
                     user = user.astype(ctypes.c_size_t)
@@ -612,102 +689,333 @@ class PoisMF:
                 return out
         
     
-    def topN(self, user, n=10, exclude_seen=True, items_pool=None):
+    def topN(self, user, n=10, include=None, exclude=None, output_score=False):
         """
-        Recommend Top-N items for a user
-
-        Outputs the Top-N items according to score predicted by the model.
-        Can exclude the items for the user that were associated to her in the
-        training set, and can also recommend from only a subset of user-provided items.
-
-        Note
-        ----
-        This function requires package 'hpfrec':
-        https://www.github.com/david-cortes/hpfrec
+        Rank top-N highest-predicted items for an existing user
 
         Parameters
         ----------
-        user : obj
-            User for which to recommend.
+        user : int or obj
+            User for which to rank the items. If 'X' passed to 'fit' was a
+            DataFrame, must match with the entries in its 'UserId' column,
+            otherwise should match with the rows of 'X'.
         n : int
-            Number of top items to recommend.
-        exclude_seen: bool
-            Whether to exclude items that were associated to the user in the training set.
-        items_pool: None or array
-            Items to consider for recommending to the user.
-        
+            Number of top-N highest-predicted results to output.
+        include : array-like
+            List of items which will be ranked. If passing this, will only
+            make a ranking among these items. If 'X' passed to 'fit' was a
+            DataFrame, must match with the entries in its 'ItemId' column,
+            otherwise should match with the columns of 'X'. Can only pass
+            one of 'include' or 'exclude'. Must not contain duplicated entries.
+        exclude : array-like
+            List of items to exclude from the ranking. If passing this, will
+            rank all the items except for these. If 'X' passed to 'fit' was a
+            DataFrame, must match with the entries in its 'ItemId' column,
+            otherwise should match with the columns of 'X'. Can only pass
+            one of 'include' or 'exclude'. Must not contain duplicated entries.
+        output_score : bool
+            Whether to output the scores in addition to the IDs. If passing
+            'False', will return a single array with the item IDs, otherwise
+            will return a tuple with the item IDs and the scores.
+
         Returns
         -------
-        rec : array (n,)
-            Top-N recommended items.
+        items : array(n,)
+            The top-N highest predicted items for this user. If the 'X' data passed to
+            'fit' was a DataFrame, will contain the item IDs from its column
+            'ItemId', otherwise will be integers matching to the columns of 'X'.
+        scores : array(n,)
+            The predicted scores for the top-N items. Will only be returned
+            when passing ``output_score=True``, in which case the result will
+            be a tuple with these two entries.
         """
-        try:
-            from hpfrec import HPF
-        except:
-            self._throw_hpfrec_msg()
-        temp = self
-        temp.Theta = self.A
-        temp.Beta = self.B
-        temp.seen = self._seen
-        return HPF.topN(temp, user, int(n), exclude_seen, items_pool)
+        assert isinstance(n, int) or isinstance(n, np.int64)
+        assert n >= 1
+        if n > self.nitems:
+            raise ValueError("'n' is larger than the available number of items.")
+        if user is None:
+            raise ValueError("Must pass a valid user.")
+
+
+        if self.reindex:
+            if len(self.user_dict_):
+                user = self.user_dict_[user]
+            else:
+                user = pd.Categorical(np.array([user]), self.user_mapping_).codes[0]
+                if user < 0:
+                    raise ValueError("Invalid 'user'.")
+        else:
+            assert isinstance(user, int) or isinstance(user, np.int64)
+            if (user < 0) or (user > self.nusers):
+                raise ValueError("Invalid 'user'.")
+
+        include, exclude = self._process_include_exclude(include, exclude)
+        if include.shape[0]:
+            if n < include.shape[0]:
+                raise ValueError("'n' cannot be smaller than the number of entries in 'include'.")
+        if exclude.shape[0]:
+            if n > (self.nitems - exclude.shape[0]):
+                raise ValueError("'n' is larger than the number of available items.")
+        outp_ix, outp_score = _call_topN(
+            self.A[user],
+            self.B,
+            include,
+            exclude,
+            n,
+            output_score,
+            self.nthreads
+        )
+
+        if self.reindex:
+            outp_ix = self.item_mapping_[outp_ix]
+        if output_score:
+            return outp_ix, outp_score
+        else:
+            return outp_ix
+
+
+    def _process_include_exclude(self, include, exclude):
+        if (include is not None) and (exclude is not None):
+            raise ValueError("Can only pass one of 'include' or 'exclude'.")
+
+        if include is not None:
+            if isinstance(include, list) or isinstance(include, tuple):
+                include = np.array(include)
+            elif include.__class__.__name__ == "Series":
+                include = include.to_numpy()
+            elif not isinstance(include, np.ndarray):
+                raise ValueError("'include' must be a list, tuple, Series, or array.")
+
+        if exclude is not None:
+            if isinstance(exclude, list) or isinstance(exclude, tuple):
+                exclude = np.array(exclude)
+            elif exclude.__class__.__name__ == "Series":
+                exclude = exclude.to_numpy()
+            elif not isinstance(exclude, np.ndarray):
+                raise ValueError("'exclude' must be a list, tuple, Series, or array.")
+
+
+        if self.reindex:
+            if (include is not None):
+                if len(self.item_dict_):
+                    include = np.array([self.item_mapping_[i] for i in include])
+                else:
+                    include = pd.Categorical(include, self.item_mapping_).codes
+            if (exclude is not None):
+                if len(self.item_dict_):
+                    exclude = np.array([self.item_mapping_[i] for i in exclude])
+                else:
+                    exclude = pd.Categorical(exclude, self.item_mapping_).codes
+        
+        if include is not None:
+            imin, imax = include.min(), include.max()
+            if (imin < 0) or (imax >= self.nitems):
+                raise ValueError("'include' contains invalid entries.")
+        else:
+            include = np.empty(0, dtype=ctypes.c_size_t)
+
+        if exclude is not None:
+            imin, imax = exclude.min(), exclude.max()
+            if (imin < 0) or (imax >= self.nitems):
+                raise ValueError("'exclude' contains invalid entries.")
+        else:
+            exclude = np.empty(0, dtype=ctypes.c_size_t)
+
+        if include.dtype != ctypes.c_size_t:
+            include = include.astype(ctypes.c_size_t)
+        if exclude.dtype != ctypes.c_size_t:
+            exclude = exclude.astype(ctypes.c_size_t)
+        return include, exclude
+
+
+    def topN_new(self, X, n=10, include=None, exclude=None, output_score=False,
+                 l2_reg = 1e3, l1_reg = 0., nupd = 50):
+        """
+        Rank top-N highest-predicted items for a new user
+
+        Note
+        ----
+        This function calculates the latent factors in the same way as
+        ``predict_factors`` - see the documentation of ``predict_factors``
+        for details.
+
+        Note
+        ----
+        The factors are initialized to the mean of each column in the fitted model.
+
+        Parameters
+        ----------
+        X : DataFrame or tuple(2)
+            Either a DataFrame with columns 'ItemId' and 'Count', indicating the non-zero item counts for a user for whom it's desired to obtain latent
+            factors, or a tuple with the first entry being the items/columns that
+            have a non-zero count, and the second entry being the actual counts.
+        n : int
+            Number of top-N highest-predicted results to output.
+        include : array-like
+            List of items which will be ranked. If passing this, will only
+            make a ranking among these items. If 'X' passed to 'fit' was a
+            DataFrame, must match with the entries in its 'ItemId' column,
+            otherwise should match with the columns of 'X'. Can only pass
+            one of 'include' or 'exclude'. Must not contain duplicated entries.
+        exclude : array-like
+            List of items to exclude from the ranking. If passing this, will
+            rank all the items except for these. If 'X' passed to 'fit' was a
+            DataFrame, must match with the entries in its 'ItemId' column,
+            otherwise should match with the columns of 'X'. Can only pass
+            one of 'include' or 'exclude'. Must not contain duplicated entries.
+        output_score : bool
+            Whether to output the scores in addition to the IDs. If passing
+            'False', will return a single array with the item IDs, otherwise
+            will return a tuple with the item IDs and the scores.
+        l2_reg : float
+            Strength of L2 regularization to use for optimizing the new factors. Note
+            that these are obtained through a conjugate-gradient method instrad of
+            proximal-gradient, which works better with smaller regularization values.
+        l1_reg : float
+            Strength of the L1 regularization (see description of argument above).
+        nupd : int
+            Maximum number of conjugate gradient updates.
+
+        Returns
+        -------
+        items : array(n,)
+            The top-N highest predicted items for this user. If the 'X' data passed to
+            'fit' was a DataFrame, will contain the item IDs from its column
+            'ItemId', otherwise will be integers matching to the columns of 'X'.
+        scores : array(n,)
+            The predicted scores for the top-N items. Will only be returned
+            when passing ``output_score=True``, in which case the result will
+            be a tuple with these two entries.
+        """
+        a_vec = self.predict_factors(X, l2_reg=l2_reg, l1_reg=l1_reg)
+        include, exclude = self._process_include_exclude(include, exclude)
+        if include.shape[0]:
+            if n < include.shape[0]:
+                raise ValueError("'n' cannot be smaller than the number of entries in 'include'.")
+        if exclude.shape[0]:
+            if n > (self.nitems - exclude.shape[0]):
+                raise ValueError("'n' is larger than the number of available items.")
+        outp_ix, outp_score = _call_topN(
+            a_vec,
+            self.B,
+            include,
+            exclude,
+            n,
+            output_score,
+            self.nthreads
+        )
+
+        if self.reindex:
+            outp_ix = self.item_mapping_[outp_ix]
+        if output_score:
+            return outp_ix, outp_score
+        else:
+            return outp_ix
 
     
-    def eval_llk(self, input_df, full_llk=False):
+    def eval_llk(self, X_test, full_llk=False, include_missing=False):
         """
         Evaluate Poisson log-likelihood (plus constant) for a given dataset
         
         Note
         ----
-        This Poisson log-likelihood is calculated only for the combinations of users and items
-        provided here, so it's not a complete likelihood, and it might sometimes turn out to
-        be a positive number because of this.
-        Will filter out the input data by taking only combinations of users
-        and items that were present in the training set.
+        By default, this Poisson log-likelihood is calculated only for the combinations
+        of users (rows) and items (columns) provided in ``X_test`` here, ignoring the
+        missing entries. This is the usual use-case for evaluating a validation or test
+        set, but can also be used for evaluating it on the training data with all
+        missing entries included as zeros (see parameters for details). Note that this calculates a *sum*, not an average.
 
         Note
         ----
-        This function requires package 'hpfrec':
-        https://www.github.com/david-cortes/hpfrec
+        If using more than 1 thread, the results might vary slightly between runs.
 
         Parameters
         ----------
-        input_df : pandas data frame (nobs, 3)
-            Input data on which to calculate log-likelihood, consisting of IDs and counts.
-            Must contain one row per non-zero observaion, with columns 'UserId', 'ItemId', 'Count'.
-            If a numpy array is provided, will assume the first 3 columns
-            contain that info.
+        X_test : Pandas DataFrame(nobs, 3) or COO(m, n)
+            Input data on which to calculate log-likelihood, consisting of IDs and
+            counts. If passing a DataFrame, must contain one row per non-zero
+            observaion, with columns 'UserId', 'ItemId', 'Count'.
+            If passing a sparse COO matrix, must have the same number of rows
+            and columns as the one that was passed to 'fit'. If using 'reindex=True',
+            cannot be passed as a COO matrix.
         full_llk : bool
-            Whether to calculate terms of the likelihood that depend on the data but not on the
-            parameters. Ommitting them is faster, but it's more likely to result in positive values.
+            Whether to add to the number a constant given by the data which doesn't
+            depend on the fitted parameters. If passing 'False' (the default), there
+            is some chance that the resulting log-likelihood will end up being
+            positive - this is not an error, but is simply due to ommission of this
+            constant. Passing 'True' might result in numeric overflow and low
+            numerical precision.
+        include_missing : bool
+            If 'True', will calculate the Poisson log-likelihood for all entries
+            (i.e. all combinations of users/items, whole matrix 'X'),
+            taking the missing ones as zero-valued. If passing 'False', will
+            calculate the Poisson log-likelihood only for the non-missing entries
+            passed in 'X_test' - this is usually the desired behavior when
+            evaluating a test dataset.
 
         Returns
         -------
-        llk : dict
-            Dictionary containing the calculated log-likelihood and the number of
-            observations that were used to calculate it.
+        llk : float
+            Obtained log-likelihood (higher is better).
         """
+        ixA, ixB, Xcoo = self._process_new_data(X_test)
+        return _eval_llk_test(
+            self.A,
+            self.B,
+            ixA,
+            ixB,
+            Xcoo,
+            full_llk, include_missing,
+            self.nthreads
+        )
+
+    def _process_new_data(self, X_test):
         assert self.is_fitted
-        try:
-            from hpfrec import HPF, cython_loops
-        except:
-            self._throw_hpfrec_msg()
-        temp = self
-        temp.stop_crit = 'maxiter'
-        HPF._process_valset(temp, input_df, valset=False)
-        out = {'llk': cython_loops.calc_llk(temp.val_set.Count.values.astype(ctypes.c_float),
-                                            temp.val_set.UserId.values.astype(cython_loops.obj_ind_type),
-                                            temp.val_set.ItemId.values.astype(cython_loops.obj_ind_type),
-                                            self.A.astype(ctypes.c_float),
-                                            self.B.astype(ctypes.c_float),
-                                            self.k,
-                                            self.nthreads,
-                                            bool(full_llk)),
-               'nobs' : self.val_set.shape[0]}
-        return out
 
+        if self.copy_data:
+            X_test = X_test.copy()
 
-    def _throw_hpfrec_msg(self):
-        install_msg  = "This function requires package 'hpfrec':\n"
-        install_msg += "https://www.github.com/david-cortes/hpfrec\n"
-        install_msg += "Can be installed with 'pip install hpfrec'."
-        raise ValueError(install_msg)
+        if self.reindex:
+            if X_test.__class__.__name__ != "DataFrame":
+                raise ValueError("If using 'reindex=True', 'X_test' must be a DataFrame.")
+            cols_require = ["UserId", "ItemId", "Count"]
+            if np.setdiff1d(np.array(cols_require), X_test.columns.values).shape[0]:
+                raise ValueError("'X_test' must contain columns " + ", ".join(cols_require))
+            X_test["UserId"] = pd.Categorical(X_test.UserId, self.user_mapping_).codes
+            X_test["ItemId"] = pd.Categorical(X_test.UserId, self.item_mapping_).codes
+            if X_test.UserId.dtype != ctypes.c_size_t:
+                X_test["UserId"] = X_test["UserId"].astype(ctypes.c_size_t)
+            if X_test.ItemId.dtype != ctypes.c_size_t:
+                X_test["ItemId"] = X_test["ItemId"].astype(ctypes.c_size_t)
+            if X_test.Count.dtype != ctypes.c_double:
+                X_test["Count"] = X_test["Count"].astype(ctypes.c_double)
+
+            umin, umax = X_test.UserId.min(), X_test.UserId.max()
+            imin, imax = X_test.ItemId.min(), X_test.ItemId.max()
+            if (umin < 0) or (umax > self.nusers):
+                raise ValueError("'X_test' contains invalid users.")
+            if (imin < 0) or (imax > self.nitems):
+                raise ValueError("'X_test' contains invalid items.")
+
+            return (
+                X_test.UserId.to_numpy(),
+                X_test.ItemId.to_numpy(),
+                X_test.Count.to_numpy()
+                )
+        else:
+            if X_test.__class__.__name__ == "DataFrame":
+                X_test = coo_matrix((X_test.Count, (X_test.UserId, X_test.ItemId)))
+            else:
+                if X_test.__class__.__name__ != "coo_matrix":
+                    raise ValueError("'X_test' must be a DataFrame or COO matrix.")
+
+        if X_test.shape[0] > self.nusers:
+            raise ValueError("'X_test' cannot contain new users/rows.")
+        if X_test.shape[1] > self.nitems:
+            raise ValueError("'X_test' cannot contain new items/columns.")
+
+        return (
+            X_test.row.astype(ctypes.c_size_t),
+            X_test.col.astype(ctypes.c_size_t),
+            X_test.data.astype(ctypes.c_double)
+            )

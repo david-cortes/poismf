@@ -9,12 +9,24 @@ dist/
 
 poismf/
 	pmf.c
+	poismf_c_wrapper.c
+	poismf_c_wrapper.cpp
 
 dist/
 	*.*
 
+build/
+    *.*
+	
+poismf.egg-info/*
+
 *.so
+*.o
+*.Rhistory
+*.directory
 
 MANIFEST
 test.py
+test2.py
 .Rproj.user
+poismf.Rproj
