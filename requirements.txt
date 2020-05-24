@@ -2,5 +2,4 @@ numpy
 scipy
 cython
 findblas>=0.1.3.4
-hpfrec>=0.2.2.18
 pandas>=0.24
