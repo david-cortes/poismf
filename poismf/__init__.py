@@ -286,8 +286,12 @@ class PoisMF:
 
     def _initialize_matrices(self):
         if self.init_type == "gamma":
-            self.A = -np.log( self.random_state.random(size = (self.nusers, self.k)) )
-            self.B = -np.log( self.random_state.random(size = (self.nitems, self.k)) )
+            self.A = -np.log( self.random_state
+                                   .random(size = (self.nusers, self.k))
+                                   .clip(min=1e-12, max=None) )
+            self.B = -np.log( self.random_state
+                                   .random(size = (self.nitems, self.k))
+                                   .clip(min=1e-12, max=None) )
         else:
             self.A = self.random_state.random(size = (self.nusers, self.k))
             self.B = self.random_state.random(size = (self.nitems, self.k))
