@@ -9,8 +9,9 @@ factors.single(
   X,
   l2_reg = 1e+05,
   l1_reg = 0,
+  weight_mult = 1,
   nupd = 100,
-  weight_mult = 1
+  limit_step = TRUE
 )
 }
 \arguments{
@@ -30,10 +31,13 @@ proximal gradient, which works better with smaller regularization values.}
 \item{l1_reg}{Strength of the L1 regularization (see description of argument above).
 Not recommended.}
 
+\item{weight_mult}{Weight multiplier for the positive entries over the missing entries.}
+
 \item{nupd}{Maximum number of conjugate gradient updates.}
 
-\item{weight_mult}{Weight multiplier for the positive entries over the missing entries.
-Not recommended.}
+\item{limit_step}{Whether to limit the step sizes so as to drive at most 1 variable
+to zero after each update. See documentation of \link{poismf} for
+details.}
 }
 \value{
 Vector of dimensionality `model$k` with the latent factors for the user,

@@ -29,7 +29,7 @@ one of `include` or `exclude`. Must not contain duplicated entries.}
 
 \item{output_score}{Whether to output the scores in addition to the IDs. If passing
 `FALSE`, will return a single array with the item IDs, otherwise
-will return a tuple with the item IDs and the scores.}
+will return a list with the item IDs and the scores.}
 }
 \value{
 \itemize{

@@ -90,7 +90,7 @@ int minimize_nonneg_cg(double x[], int n, double *fun_val,
                        fun_eval *obj_fun, grad_eval *grad_fun, callback *cb, void *data,
                        double tol, size_t maxnfeval, size_t maxiter, size_t *niter, size_t *nfeval,
                        double decr_lnsrch, double lnsrch_const, size_t max_ls,
-                       double *buffer_arr, int nthreads, int verbose);
+                       bool limit_step, double *buffer_arr, int nthreads, int verbose);
 /* Data struct to pass to nonneg_cg */
 typedef struct fdata {
     double *F;
@@ -163,7 +163,7 @@ void cg_iteration
 (
     double *A, double *B,
     double *Xr, sparse_ix *Xr_indptr, sparse_ix *Xr_indices,
-    size_t dimA, size_t k,
+    size_t dimA, size_t k, bool limit_step,
     double *Bsum, double l2_reg, double w_mult, size_t npass,
     double *buffer_arr, double *Bsum_w, int nthreads
 );
@@ -175,7 +175,8 @@ int run_poismf(
     double *restrict B, double *restrict Xc, sparse_ix *restrict Xc_indptr, sparse_ix *restrict Xc_indices,
     const size_t dimA, const size_t dimB, const size_t k,
     const double l2_reg, const double l1_reg, const double w_mult, double step_size,
-    const bool use_cg, const size_t numiter, const size_t npass, const int nthreads);
+    const bool use_cg, const bool limit_step, const size_t numiter, const size_t npass,
+    const int nthreads);
 
 /* topN.c */
 bool check_is_sorted(sparse_ix arr[], size_t n);
@@ -219,7 +220,7 @@ int factors_multiple
     int k, size_t dimA,
     double l2_reg, double w_mult,
     double step_size, size_t niter, size_t npass,
-    bool use_cg,
+    bool use_cg, bool limit_step,
     int nthreads
 );
 int factors_single
@@ -229,7 +230,7 @@ int factors_single
     double *restrict X, sparse_ix X_ind[], size_t nnz,
     double *restrict B, double *restrict Bsum,
     size_t npass, double l2_reg, double l1_new, double l1_old,
-    double w_mult
+    double w_mult, bool limit_step
 );
 
 #ifdef __cplusplus

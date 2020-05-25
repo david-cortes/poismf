@@ -109,7 +109,6 @@ void cblas_dscal(const int N, const double alpha, double *X, const int incX);
 #define get_curr_ix_rotation(ix, n) (  ((ix) == 0) ? 0 : (n)  )
 #define incr_ix_rotation(ix) (  ((ix) == 0)? 1 : 0  )
 #define square(x) ( (x) * (x) )
-#define nonneg(x) ( ((x) > 1e-16)? (x) : (0.) )
 
 typedef void fun_eval(double x[], int n, double *f, void *data);
 typedef void grad_eval(double x[], int n, double grad[], void *data);
@@ -148,6 +147,10 @@ typedef enum cg_result {tol_achieved = 0, stop_maxnfeval  = 1,
                       (Recommended: 0.01)
     max_ls          : Maximum number of line search trials per iteration
                       (Recommended: 20)
+    limit_step      : Whether to limit the step sizes so as to make at most 1
+                      variable become zero after each update - this is the strategy
+                      prescribed in the reference paper
+                      (Recommended: true)
     buffer_arr      : Array of dimensions (5*n). Will allocate it and then free it if passing NULL.
     nthreads        : Number of parallel threads to use
     verbose         : Whether to print convergence messages
@@ -156,7 +159,7 @@ int minimize_nonneg_cg(double *restrict x, int n, double *fun_val,
     fun_eval *obj_fun, grad_eval *grad_fun, callback *cb, void *data,
     double tol, size_t maxnfeval, size_t maxiter, size_t *niter, size_t *nfeval,
     double decr_lnsrch, double lnsrch_const, size_t max_ls,
-    double *buffer_arr, int nthreads, int verbose)
+    bool limit_step, double *buffer_arr, int nthreads, int verbose)
 {
     double max_step;
     double direction_norm_sq;
@@ -247,11 +250,22 @@ int minimize_nonneg_cg(double *restrict x, int n, double *fun_val,
         }
 
         /* determine maximum step size */
-        max_step = 1.;
-        for (size_t i = 0; i < n_szt; i++)
+        if (limit_step)
         {
-            if (direction_curr[i] < 0.)
-                max_step = fmin(max_step, -x[i] / direction_curr[i]);
+            max_step = 1.;
+            for (size_t i = 0; i < n_szt; i++) {
+                if (direction_curr[i] < 0.)
+                    max_step = fmin(max_step, -x[i] / direction_curr[i]);
+            }
+        }
+
+        else {
+            max_step = 0.;
+            for (size_t i = 0; i < n_szt; i++) {
+                if (direction_curr[i] < 0.)
+                    max_step = fmax(max_step, -x[i] / direction_curr[i]);
+            }
+            max_step = fmin(1., 0.99 * max_step);
         }
 
         /* perform line search */
@@ -261,8 +275,12 @@ int minimize_nonneg_cg(double *restrict x, int n, double *fun_val,
         {
             memcpy(new_x, x, n*sizeof(double));
             cblas_daxpy(n, curr_step, direction_curr, 1, new_x, 1);
-            for (size_t i = 0; i < n_szt; i++)
-                new_x[i] = nonneg(new_x[i]);
+            if (limit_step)
+                for (size_t i = 0; i < n_szt; i++)
+                    new_x[i] = (new_x[i] >= 1e-15)? new_x[i] : 0.;
+            else
+                for (size_t i = 0; i < n_szt; i++)
+                    new_x[i] = (new_x[i] > 0.)? new_x[i] : 0.;
             obj_fun(new_x, n, &new_fun_val, data);
             if ( !isinf(new_fun_val) && !isnan(new_fun_val) )
             {

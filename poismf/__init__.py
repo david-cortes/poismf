@@ -11,7 +11,7 @@ class PoisMF:
 
     Fast and memory-efficient model for recommender systems based on Poisson
     factorization of sparse counts data (e.g. number of times a user played different
-    songs), using either proximal gradient or conjugate gradient optimization procedures.
+    songs), using gradient-based optimization procedures.
     
     If passing reindex=True, it will internally reindex all user and item IDs. Your data will not require
     reindexing if the IDs for users and items meet the following criteria:
@@ -50,6 +50,14 @@ class PoisMF:
         Whether to fit the model through conjugate gradient method. This is slower,
         but less prone to failure, usually reaches better local optima, and is able
         to fit models with lower regularization values.
+    limit_step : bool
+        When passing ``use_cg=True``, whether to limit the step sizes in each update
+        so as to drive at most one variable to zero each time, as prescribed in [2].
+        If running the procedure for many iterations, it's recommended to set this
+        to 'True'. Generally, running the model for many more iterations with
+        ``use_cg=True`` and ``limit_step=True`` tends to produce better results,
+        but it's slower, and running for few iterations will usually lead to worse
+        results compared to using ``limit_step=False``.
     l2_reg : float
         Strength of L2 regularization. Proximal gradient method will likely fail
         to fit when the regularization is too small, and the recommended value
@@ -60,7 +68,8 @@ class PoisMF:
         Strength of L1 regularization. Not recommended.
     niter : int
         Number of alternating iterations to perform. One iteration denotes an update
-        over both matrices.
+        over both matrices. If passing ``'auto'``, will set it to 10 for proximal
+        gradient, and 20 for conjugate gradient.
     nupd : int
             * When using proximal gradient, this is the number of proximal gradient
               updates to perform to each vector per iteration. Increasing the number of
@@ -87,7 +96,7 @@ class PoisMF:
         values will make the factors have larger values (which might be desirable),
         and can help with instability and failed optimization cases. If passing this,
         it's recommended to try very large values (e.g. 10^2), and might require
-        adjusting the other hyperparameters. Not recommended.
+        adjusting the other hyperparameters.
     init_type : str
         How to initialize the model parameters. One of 'gamma' (will initialize
         them `~ Gamma(1, 1))` or 'unif' (will initialize them `~ Unif(0, 1))`.
@@ -138,8 +147,9 @@ class PoisMF:
            "A conjugate gradient type method for the nonnegative constraints optimization problems."
            Journal of Applied Mathematics 2013 (2013).
     """
-    def __init__(self, k = 30, use_cg = False, l2_reg = "auto", l1_reg = 0.0,
-                 niter = 10, nupd = "auto", initial_step = 1e-7,
+    def __init__(self, k = 50, use_cg = True, limit_step = True,
+                 l2_reg = "auto", l1_reg = 0.0,
+                 niter = "auto", nupd = "auto", initial_step = 1e-7,
                  weight_mult = 1.0, init_type = "gamma", random_state = 1,
                  reindex = True, copy_data = True, produce_dicts = False,
                  nthreads = -1):
@@ -148,6 +158,8 @@ class PoisMF:
             l2_reg = 1e5 if use_cg else 1e9
         if nupd == "auto":
             nupd = 5 if use_cg else 1
+        if niter == "auto":
+            niter = 20 if use_cg else 10
 
         ## checking inputs
         assert k > 0
@@ -188,7 +200,8 @@ class PoisMF:
         self.init_type = init_type
         self.niter = niter
         self.nupd = nupd
-        self.use_cg = int(bool(use_cg))
+        self.use_cg = bool(use_cg)
+        self.limit_step = bool(limit_step)
         self.nthreads = nthreads
 
         self.reindex = bool(reindex)
@@ -301,9 +314,10 @@ class PoisMF:
             csr.data, csr.indices, csr.indptr,
             csc.data, csc.indices, csc.indptr,
             self.A, self.B,
-            self.use_cg, self.l2_reg, self.l1_reg, self.weight_mult,
+            self.use_cg, self.limit_step,
+            self.l2_reg, self.l1_reg, self.weight_mult,
             self.initial_step, self.niter, self.nupd, self.nthreads)
-        self.Bsum = self.B.sum(axis = 0).reshape(-1).astype(ctypes.c_double) + self.l1_reg
+        self.Bsum = self.B.sum(axis = 0).astype(ctypes.c_double) + self.l1_reg
 
     def fit_unsafe(self, A, B, Xcsr, Xcsc):
         """
@@ -365,7 +379,8 @@ class PoisMF:
             self.user_dict_ = {self.user_mapping_[i]:i for i in range(self.user_mapping_.shape[0])}
             self.item_dict_ = {self.item_mapping_[i]:i for i in range(self.item_mapping_.shape[0])}
 
-    def predict_factors(self, X, l2_reg=1e5, l1_reg=0., weight_mult=1., nupd=100):
+    def predict_factors(self, X, l2_reg=1e5, l1_reg=0., weight_mult=1.,
+                        nupd=100, limit_step=True):
         """
         Get latent factors for a new user given her item counts
 
@@ -410,9 +425,12 @@ class PoisMF:
             Not recommended.
         weight_mult : float
             Weight multiplier for the positive entries over the missing entries.
-            Not recommended.
         nupd : int > 0
             Maximum number of conjugate gradient updates.
+        limit_step : bool
+            Whether to limit the step sizes so as to drive at most 1 variable
+            to zero after each update. See documentation of ``PoisMF`` for
+            details.
 
         Returns
         -------
@@ -427,7 +445,8 @@ class PoisMF:
                                  int(nupd),
                                  float(l2_reg),
                                  float(l1_reg), float(self.l1_reg),
-                                 float(weight_mult))
+                                 float(weight_mult),
+                                 bool(limit_step))
         if np.any(np.isnan(a_vec)):
             raise ValueError("NaNs encountered in the result. Failed to produce latent factors.")
         if np.max(a_vec) <= 0:
@@ -540,6 +559,7 @@ class PoisMF:
             self.niter,
             self.nupd,
             self.use_cg,
+            self.limit_step,
             self.nthreads
         )
 
@@ -833,7 +853,8 @@ class PoisMF:
 
 
     def topN_new(self, X, n=10, include=None, exclude=None, output_score=False,
-                 l2_reg = 1e3, l1_reg = 0., nupd = 50):
+                 l2_reg = 1e5, l1_reg = 0., weight_mult=1.,
+                 nupd = 100, limit_step=True):
         """
         Rank top-N highest-predicted items for a new user
 
@@ -877,8 +898,14 @@ class PoisMF:
             proximal-gradient, which works better with smaller regularization values.
         l1_reg : float
             Strength of the L1 regularization (see description of argument above).
+        weight_mult : float
+            Weight multiplier for the positive entries over the missing entries.
         nupd : int
             Maximum number of conjugate gradient updates.
+        limit_step : bool
+            Whether to limit the step sizes so as to drive at most 1 variable
+            to zero after each update. See documentation of ``PoisMF`` for
+            details.
 
         Returns
         -------
@@ -891,7 +918,9 @@ class PoisMF:
             when passing ``output_score=True``, in which case the result will
             be a tuple with these two entries.
         """
-        a_vec = self.predict_factors(X, l2_reg=l2_reg, l1_reg=l1_reg)
+        a_vec = self.predict_factors(X, l2_reg=l2_reg, l1_reg=l1_reg,
+                                     weight_mult=weight_mult, nupd=nupd,
+                                     limit_step=limit_step)
         include, exclude = self._process_include_exclude(include, exclude)
         if include.shape[0]:
             if n < include.shape[0]:

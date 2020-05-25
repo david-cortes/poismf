@@ -9,14 +9,15 @@ cdef extern from "../src/poismf.h":
         double *B, double *Xc, sparse_ix *Xc_indptr, sparse_ix *Xc_indices,
         const size_t dimA, const size_t dimB, const size_t k,
         const double l2_reg, const double l1_reg, const double w_mult, double step_size,
-        const bint use_cg, const size_t numiter, const size_t npass, const int nthreads)
+        const bint use_cg, const bint use_cg, const size_t numiter, const size_t npass,
+        const int nthreads)
     int factors_single(
         double *out, size_t k,
         double *A_old, size_t dimA,
         double *X, sparse_ix X_ind[], size_t nnz,
         double *B, double *Bsum,
         size_t npass, double l2_reg, double l1_new, double l1_old,
-        double w_mult
+        double w_mult, bint limit_step
     )
     void predict_multiple(
         double *out,
@@ -42,7 +43,7 @@ cdef extern from "../src/poismf.h":
         int k, size_t dimA,
         double l2_reg, double w_mult,
         double step_size, size_t niter, size_t npass,
-        bint use_cg,
+        bint use_cg, bint limit_step,
         int nthreads
     )
     int topN(
@@ -62,7 +63,7 @@ def _run_poismf(
     np.ndarray[size_t, ndim=1] Xc_indptr,
     np.ndarray[double, ndim=2] A,
     np.ndarray[double, ndim=2] B,
-    bint use_cg=0,
+    bint use_cg=0, bint limit_step=0,
     double l2_reg=1e9, double l1_reg=0, double w_mult=1.,
     double step_size=1e-7,
     size_t niter=10, size_t npass=1, int nthreads=1):
@@ -76,7 +77,7 @@ def _run_poismf(
         &B[0,0], &Xc[0], &Xc_indptr[0], &Xc_indices[0],
         dimA, dimB, k,
         l2_reg, l1_reg, w_mult, step_size,
-        use_cg, niter, npass, nthreads
+        use_cg, limit_step, niter, npass, nthreads
         )
     if ret_code == 1:
         raise MemoryError("Could not allocate enough memory.")
@@ -94,7 +95,7 @@ def _predict_factors(
         size_t npass = 20,
         double l2_reg = 1e5,
         double l1_new = 0., double l1_old = 0.,
-        double w_mult = 1.
+        double w_mult = 1., bint limit_step = 0,
     ):
     cdef np.ndarray[double, ndim=1] out = np.empty(A_old.shape[1], dtype=ctypes.c_double)
     cdef int ret_code = factors_single(
@@ -103,7 +104,7 @@ def _predict_factors(
         &counts[0], &ix[0], <size_t> counts.shape[0],
         &B[0,0], &Bsum[0],
         npass, l2_reg, l1_new, l1_old,
-        w_mult
+        w_mult, limit_step
     )
     if ret_code != 0:
         raise MemoryError("Could not allocate enough memory.")
@@ -122,6 +123,7 @@ def _predict_factors_multiple(
         size_t niter = 10,
         size_t npass = 1,
         bint use_cg = 0,
+        bint limit_step = 0,
         int nthreads = 1
     ):
     cdef int k = <size_t> B.shape[1]
@@ -142,7 +144,7 @@ def _predict_factors_multiple(
         k, dimA,
         l2_reg, w_mult,
         step_size, niter, npass,
-        use_cg,
+        use_cg, limit_step,
         nthreads
     )
 

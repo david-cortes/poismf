@@ -199,7 +199,7 @@ void cg_iteration
 (
     double *A, double *B,
     double *Xr, sparse_ix *Xr_indptr, sparse_ix *Xr_indices,
-    size_t dimA, size_t k,
+    size_t dimA, size_t k, bool limit_step,
     double *Bsum, double l2_reg, double w_mult, size_t npass,
     double *buffer_arr, double *Bsum_w, int nthreads
 )
@@ -232,7 +232,7 @@ void cg_iteration
             A + ia*k, k_int, &fun_val,
             calc_fun_single, grad_fun, NULL, (void*) &data,
             1e-2, 150, npass, &niter, &nfeval,
-            0.25, 0.01, 20,
+            0.25, 0.01, 20, limit_step,
             buffer_arr + 5*k*omp_get_thread_num(), 1, 0);
     }
 }
@@ -246,18 +246,23 @@ void set_interrup_global_variable(int s)
 
 
 /* Main function for Proximal Gradient and Conjugate Gradient solvers
-    A                           : Pointer to the already-initialized A matrix (user-factor)
+    A                           : Pointer to the already-initialized A matrix
+                                  (user factors)
     Xr, Xr_indptr, Xr_indices   : Pointers to the X matrix in row-sparse format
-    B                           : Pointer to the already-initialized B matrix (item-factor)
+    B                           : Pointer to the already-initialized B matrix
+                                  (item factors)
     Xc, Xc_indptr, Xc_indices   : Pointers to the X matrix in column-sparse format
     dimA                        : Number of rows in the A matrix
     dimB                        : Number of rows in the B matrix
-    k                           : Dimensionality for the factorizing matrices (number of columns of A and B matrices)
+    k                           : Dimensionality for the factorizing matrices
+                                  (number of columns of A and B matrices)
     l2_reg                      : Regularization pameter for the L2 norm of the A and B matrices
     l1_reg                      : Regularization pameter for the L1 norm of the A and B matrices
     w_mult                      : Weight multiplier for the positive entries in X
-    step_size                   : Initial step size for PGD updates (will be decreased by 1/2 every iteration - ignored for CG)
+    step_size                   : Initial step size for PGD updates
+                                  (will be decreased by 1/2 every iteration - ignored for CG)
     use_cg                      : Whether to use a Conjugate-Gradient approach instead of Proximal-Gradient.
+    limit_step                  : Whether to limit CG step sizes to zero-out one variable per step
     numiter                     : Number of iterations for which to run the procedure
     npass                       : Number of updates to the same vector per iteration
     nthreads                    : Number of threads to use
@@ -270,7 +275,8 @@ int run_poismf(
     double *restrict B, double *restrict Xc, sparse_ix *restrict Xc_indptr, sparse_ix *restrict Xc_indices,
     const size_t dimA, const size_t dimB, const size_t k,
     const double l2_reg, const double l1_reg, const double w_mult, double step_size,
-    const bool use_cg, const size_t numiter, const size_t npass, const int nthreads)
+    const bool use_cg, const bool limit_step, const size_t numiter, const size_t npass,
+    const int nthreads)
 {
 
     double *cnst_sum = (double*) malloc(sizeof(double) * k);
@@ -313,7 +319,8 @@ int run_poismf(
 
         if (use_cg) {
             cg_iteration(A, B, Xr, Xr_indptr, Xr_indices,
-                         dimA, k, cnst_sum, l2_reg, w_mult, npass,
+                         dimA, k, limit_step, cnst_sum,
+                         l2_reg, w_mult, npass,
                          buffer_arr, Bsum_w, nthreads);
         } else {
             cblas_dscal(k_int, neg_step_sz, cnst_sum, 1);
@@ -337,7 +344,8 @@ int run_poismf(
 
         if (use_cg) {
             cg_iteration(B, A, Xr, Xc_indptr, Xc_indices,
-                         dimB, k, cnst_sum, l2_reg, w_mult, npass,
+                         dimB, k, limit_step, cnst_sum,
+                         l2_reg, w_mult, npass,
                          buffer_arr, Bsum_w, nthreads);
         } else {
             cblas_dscal(k_int, neg_step_sz, cnst_sum, 1);

@@ -13,7 +13,9 @@ topN.new(
   output_score = FALSE,
   l2_reg = 1e+05,
   l1_reg = 0,
-  nupd = 50
+  weight_mult = 1,
+  nupd = 100,
+  limit_step = TRUE
 )
 }
 \arguments{
@@ -43,7 +45,7 @@ one of `include` or `exclude`. Must not contain duplicated entries.}
 
 \item{output_score}{Whether to output the scores in addition to the IDs. If passing
 `FALSE`, will return a single array with the item IDs, otherwise
-will return a tuple with the item IDs and the scores.}
+will return a list with the item IDs and the scores.}
 
 \item{l2_reg}{Strength of L2 regularization to use for optimizing the new factors. Note
 that these are obtained through a conjugate-gradient method instead of
@@ -52,7 +54,13 @@ proximal gradient, which works better with smaller regularization values.}
 \item{l1_reg}{Strength of the L1 regularization (see description of argument above).
 Not recommended.}
 
+\item{weight_mult}{Weight multiplier for the positive entries over the missing entries.}
+
 \item{nupd}{Maximum number of conjugate gradient updates.}
+
+\item{limit_step}{Whether to limit the step sizes so as to drive at most 1 variable
+to zero after each update. See documentation of \link{poismf} for
+details.}
 }
 \value{
 \itemize{

@@ -1,16 +1,14 @@
 # Poisson Factorization
 
-Very fast and memory-efficient non-negative matrix factorization for sparse counts data, based on Poisson likelihood with regularization. The algorithm is described in ["Fast Non-Bayesian Poisson Factorization for Implicit-Feedback Recommendations"](http://arxiv.org/abs/1811.01908).
+Very fast and memory-efficient non-negative matrix factorization for sparse counts data, based on Poisson likelihood with regularization. The algorithm is described in ["Fast Non-Bayesian Poisson Factorization for Implicit-Feedback Recommendations"](http://arxiv.org/abs/1811.01908) [*To be updated after last additions*].
 
-The model is similar to [Hierarchical Poisson Factorization](https://arxiv.org/abs/1311.1704), but uses regularization instead of a bayesian hierarchical structure, and is fit through proximal gradient iteration instead of coordinate ascent, resulting in a procedure which, for larger datasets, can be more than 400x faster than HPF as implemented in the [hpfrec](https://www.github.com/david-cortes/hpfrec) package, and 15x faster than implicit-ALS as implemented in the package [implicit](https://github.com/benfred/implicit).
-
-(Alternatively, can also use L1 regularization or a mixture of L1 and L2, and use a conjugate gradient method instead of proximal gradient)
+The model is similar to [Hierarchical Poisson Factorization](https://arxiv.org/abs/1311.1704), but uses regularization instead of a bayesian hierarchical structure, and is fit through gradient-based methods instead of coordinate ascent.
 
 The implementation is in C with interfaces for Python and R.
 
 # Update 2020-23-05
 
-The conjugate gradient method in this package has been reworked, and it's no longer susceptible to failed optimizations. Using the conjugate gradient method coupled with large numbers of iterations is now very competitive in terms of both quality and speed against other methods such as HPF, but it's nowhere near as fast as the proximal gradient version.
+The conjugate gradient method in this package has been reworked, and it's no longer susceptible to failed optimizations. Using the conjugate gradient method coupled with large numbers of iterations is now very competitive in terms of both quality and speed against HPF (Bayesian version), but it's nowhere near as fast as the proximal gradient version.
 
 # Model description
 
@@ -54,13 +52,17 @@ Requires some BLAS library such as MKL (`pip install mkl-devel`) or OpenBLAS - w
 For any installation problems, please open an issue in GitHub providing information about your system (OS, BLAS, C compiler) and Python installation.
 
 * R
-```r
-install.packages("poismf")
-```
-or
+
+Latest version (recommended):
 ```r
 devtools::install_github("david-cortes/poismf")
 ```
+
+Older version from CRAN:
+```r
+install.packages("poismf")
+```
+
 
 # Sample usage
 
@@ -87,7 +89,7 @@ df = pd.DataFrame({
 from poismf import PoisMF
 
 ### good speed
-model = PoisMF()
+model = PoisMF(use_cg=False)
 ### good quality
 model = PoisMF(use_cg=True)
 model.fit(df)
@@ -124,7 +126,7 @@ X <- X[!duplicated(X[, c("row_ix", "col_ix")]), ]
 
 ### Factorize the randomly-generated sparse matrix
 ### good speed
-model <- poismf(X, nthreads=1)
+model <- poismf(X, use_cg=FALSE, nthreads=1)
 ### good quality
 model <- poismf(X, use_cg=TRUE, nthreads=1)
 
@@ -144,31 +146,37 @@ You can also take the C file `poismf/poismf.c` and use it in some language other
 
 ```c
 /* Main function for Proximal Gradient and Conjugate Gradient solvers
-	A                           : Pointer to the already-initialized A matrix (user-factor)
-	Xr, Xr_indptr, Xr_indices   : Pointers to the X matrix in row-sparse format
-	B                           : Pointer to the already-initialized B matrix (item-factor)
-	Xc, Xc_indptr, Xc_indices   : Pointers to the X matrix in column-sparse format
-	dimA                        : Number of rows in the A matrix
-	dimB                        : Number of rows in the B matrix
-	k                           : Dimensionality for the factorizing matrices (number of columns of A and B matrices)
-	l2_reg                      : Regularization pameter for the L2 norm of the A and B matrices
-	l1_reg                      : Regularization pameter for the L1 norm of the A and B matrices
-	w_mult                      : Weight multiplier for the positive entries in X
-	step_size                   : Initial step size for PGD updates (will be decreased by 1/2 every iteration - ignored for CG)
-	use_cg                      : Whether to use a Conjugate-Gradient approach instead of Proximal-Gradient.
-	numiter                     : Number of iterations for which to run the procedure
-	npass                       : Number of updates to the same vector per iteration
-	nthreads                    : Number of threads to use
+    A                           : Pointer to the already-initialized A matrix
+                                  (user factors)
+    Xr, Xr_indptr, Xr_indices   : Pointers to the X matrix in row-sparse format
+    B                           : Pointer to the already-initialized B matrix
+                                  (item factors)
+    Xc, Xc_indptr, Xc_indices   : Pointers to the X matrix in column-sparse format
+    dimA                        : Number of rows in the A matrix
+    dimB                        : Number of rows in the B matrix
+    k                           : Dimensionality for the factorizing matrices
+                                  (number of columns of A and B matrices)
+    l2_reg                      : Regularization pameter for the L2 norm of the A and B matrices
+    l1_reg                      : Regularization pameter for the L1 norm of the A and B matrices
+    w_mult                      : Weight multiplier for the positive entries in X
+    step_size                   : Initial step size for PGD updates
+                                  (will be decreased by 1/2 every iteration - ignored for CG)
+    use_cg                      : Whether to use a Conjugate-Gradient approach instead of Proximal-Gradient.
+    limit_step                  : Whether to limit CG step sizes to zero-out one variable per step
+    numiter                     : Number of iterations for which to run the procedure
+    npass                       : Number of updates to the same vector per iteration
+    nthreads                    : Number of threads to use
 Matrices A and B are optimized in-place,
 and are assumed to be in row-major order.
 Returns 0 if it succeeds, 1 if it runs out of memory.
 */
 int run_poismf(
-    double *restrict A, double *restrict Xr, sparse_ix *restrict Xr_indptr, sparse_ix *restrict Xr_indices,
-    double *restrict B, double *restrict Xc, sparse_ix *restrict Xc_indptr, sparse_ix *restrict Xc_indices,
+    double *restrict A, double *restrict Xr, size_t *restrict Xr_indptr, size_t *restrict Xr_indices,
+    double *restrict B, double *restrict Xc, size_t *restrict Xc_indptr, size_t *restrict Xc_indices,
     const size_t dimA, const size_t dimB, const size_t k,
     const double l2_reg, const double l1_reg, const double w_mult, double step_size,
-    const bool use_cg, const size_t numiter, const size_t npass, const int nthreads)
+    const bool use_cg, const bool limit_step, const size_t numiter, const size_t npass,
+    const int nthreads)
 ```
 
 # Documentation

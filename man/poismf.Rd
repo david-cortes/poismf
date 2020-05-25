@@ -6,11 +6,12 @@
 \usage{
 poismf(
   X,
-  k = 30,
-  use_cg = FALSE,
+  k = 50,
+  use_cg = TRUE,
+  limit_step = TRUE,
   l2_reg = ifelse(use_cg, 1e+05, 1e+09),
   l1_reg = 0,
-  niter = 10,
+  niter = ifelse(use_cg, 20, 10),
   nupd = ifelse(use_cg, 5, 1),
   initial_step = 1e-07,
   weight_mult = 1,
@@ -55,6 +56,14 @@ it's recommended to use `use_cg=TRUE`.}
 but less prone to failure, usually reaches better local optima, and is able
 to fit models with lower regularization values.}
 
+\item{limit_step}{When passing `use_cg=TRUE`, whether to limit the step sizes in each update
+so as to drive at most one variable to zero each time, as prescribed in [2].
+If running the procedure for many iterations, it's recommended to set this
+to `TRUE`. Generally, running the model for many more iterations with
+`use_cg=TRUE` and `limit_step=TRUE` tends to produce better results,
+but it's slower, and running for few iterations will usually lead to worse
+results compared to using `limit_step=FALSE`.}
+
 \item{l2_reg}{Strength of L2 regularization. Proximal gradient method will likely fail
 to fit when the regularization is too small, and the recommended value
 is 10^9. Recommended to decrease it when using conjugate gradient method
@@ -92,7 +101,7 @@ implicitly put more weight on the non-missing entries already. Passing larger
 values will make the factors have larger values (which might be desirable),
 and can help with instability and failed optimization cases. If passing this,
 it's recommended to try very large values (e.g. 10^2), and might require
-adjusting the other hyperparameters. Not recommended.}
+adjusting the other hyperparameters.}
 
 \item{init_type}{How to initialize the model parameters. One of `'gamma'` (will initialize
 them `~ Gamma(1, 1))` or `'unif'` (will initialize them `~ Unif(0, 1))`..}
@@ -106,8 +115,8 @@ An object of class `poismf` with the following fields of interest:
 }
 \description{
 Creates a low-rank non-negative factorization of a sparse counts matrix by
-maximizing Poisson likelihood minus L1/L2 regularization, using optimization routines
-based on either proximal gradient or conjugate gradient.
+maximizing Poisson likelihood minus L1/L2 regularization, using gradient-based
+optimization procedures.
 
 Ideal for usage in recommender systems, in which the `X` matrix would consist of
 interactions (e.g. clicks, views, plays), with users representing the rows and items
@@ -169,13 +178,14 @@ X <- X[!duplicated(X[, c("row_ix", "col_ix")]), ]
 
 ### factorize the randomly-generated sparse matrix
 ### good speed (proximal gradient)
-model <- poismf(X, nthreads=1)
+model <- poismf(X, use_cg=FALSE, nthreads=1)
 
 ### good quality, but slower (conjugate gradient)
 model <- poismf(X, use_cg=TRUE, nthreads=1)
 
 ### good quality, but much slower (gradient descent)
-model <- poismf(X, use_cg=TRUE, niter=100, nupd=1, nthreads=1)
+model <- poismf(X, use_cg=TRUE, limit_step=FALSE,
+            niter=100, nupd=1, nthreads=1)
 
 ### predict functionality (chosen entries in X)
 ### predict entry [1, 10] (row 1, column 10)

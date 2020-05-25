@@ -7,8 +7,8 @@
 
 #' @title Factorization of Sparse Counts Matrices through Poisson Likelihood
 #' @description Creates a low-rank non-negative factorization of a sparse counts matrix by
-#' maximizing Poisson likelihood minus L1/L2 regularization, using optimization routines
-#' based on either proximal gradient or conjugate gradient.
+#' maximizing Poisson likelihood minus L1/L2 regularization, using gradient-based
+#' optimization procedures.
 #' 
 #' Ideal for usage in recommender systems, in which the `X` matrix would consist of
 #' interactions (e.g. clicks, views, plays), with users representing the rows and items
@@ -58,6 +58,13 @@
 #' @param use_cg Whether to fit the model through conjugate gradient method. This is slower,
 #' but less prone to failure, usually reaches better local optima, and is able
 #' to fit models with lower regularization values.
+#' @param limit_step When passing `use_cg=TRUE`, whether to limit the step sizes in each update
+#' so as to drive at most one variable to zero each time, as prescribed in [2].
+#' If running the procedure for many iterations, it's recommended to set this
+#' to `TRUE`. Generally, running the model for many more iterations with
+#' `use_cg=TRUE` and `limit_step=TRUE` tends to produce better results,
+#' but it's slower, and running for few iterations will usually lead to worse
+#' results compared to using `limit_step=FALSE`.
 #' @param l2_reg Strength of L2 regularization. Proximal gradient method will likely fail
 #' to fit when the regularization is too small, and the recommended value
 #' is 10^9. Recommended to decrease it when using conjugate gradient method
@@ -90,7 +97,7 @@
 #' values will make the factors have larger values (which might be desirable),
 #' and can help with instability and failed optimization cases. If passing this,
 #' it's recommended to try very large values (e.g. 10^2), and might require
-#' adjusting the other hyperparameters. Not recommended.
+#' adjusting the other hyperparameters.
 #' @param init_type How to initialize the model parameters. One of `'gamma'` (will initialize
 #' them `~ Gamma(1, 1))` or `'unif'` (will initialize them `~ Unif(0, 1))`..
 #' @param seed Random seed to use for starting the factorizing matrices.
@@ -140,13 +147,14 @@
 #' 
 #' ### factorize the randomly-generated sparse matrix
 #' ### good speed (proximal gradient)
-#' model <- poismf(X, nthreads=1)
+#' model <- poismf(X, use_cg=FALSE, nthreads=1)
 #' 
 #' ### good quality, but slower (conjugate gradient)
 #' model <- poismf(X, use_cg=TRUE, nthreads=1)
 #' 
 #' ### good quality, but much slower (gradient descent)
-#' model <- poismf(X, use_cg=TRUE, niter=100, nupd=1, nthreads=1)
+#' model <- poismf(X, use_cg=TRUE, limit_step=FALSE,
+#'             niter=100, nupd=1, nthreads=1)
 #' 
 #' ### predict functionality (chosen entries in X)
 #' ### predict entry [1, 10] (row 1, column 10)
@@ -169,8 +177,10 @@
 #' sqrt(mean((A_full["2",] - A_orig["2",])^2))
 #' @seealso \link{predict.poismf} \link{topN} \link{factors}
 #' \link{get.factor.matrices} \link{get.model.mappings}
-poismf <- function(X, k = 30, use_cg = FALSE, l2_reg = ifelse(use_cg, 1e5, 1e9), l1_reg = 0,
-                   niter = 10, nupd = ifelse(use_cg, 5, 1), initial_step = 1e-7,
+poismf <- function(X, k = 50, use_cg = TRUE, limit_step = TRUE,
+                   l2_reg = ifelse(use_cg, 1e5, 1e9), l1_reg = 0,
+                   niter = ifelse(use_cg, 20, 10),
+                   nupd = ifelse(use_cg, 5, 1), initial_step = 1e-7,
                    weight_mult = 1, init_type = "gamma", seed = 1,
                    nthreads = parallel::detectCores()) {
     
@@ -179,6 +189,7 @@ poismf <- function(X, k = 30, use_cg = FALSE, l2_reg = ifelse(use_cg, 1e5, 1e9),
     if (NROW(nthreads) > 1 || nthreads < 1) {nthreads <- parallel::detectCores()}
     if (NROW(k) > 1 || k < 1) { stop("'k' must be a positive integer.") }
     if (NROW(use_cg) < 1) { stop("'use_cg' must be a boolean/logical.") }
+    if (NROW(limit_step) < 1) { stop("'limit_step' must be a boolean/logical.") }
     if (NROW(initial_step) > 1 || initial_step <= 0) {stop("'initial_step' must be a positive number.")}
     if (nupd < 1) {stop("'nupd' must be a positive integer.")}
     if (l1_reg < 0 | l2_reg < 0) {stop("Regularization parameters must be non-negative.")}
@@ -189,6 +200,7 @@ poismf <- function(X, k = 30, use_cg = FALSE, l2_reg = ifelse(use_cg, 1e5, 1e9),
     l1_reg       <- as.numeric(l1_reg)
     l2_reg       <- as.numeric(l2_reg)
     use_cg       <- as.logical(use_cg)
+    limit_step   <- as.logical(limit_step)
     weight_mult  <- as.numeric(weight_mult)
     initial_step <- as.numeric(initial_step)
     niter        <- as.integer(niter)
@@ -298,7 +310,7 @@ poismf <- function(X, k = 30, use_cg = FALSE, l2_reg = ifelse(use_cg, 1e5, 1e9),
               Xcsr@ra, Xcsr@ja - 1L, Xcsr@ia - 1L,
               Xcsc@ra, Xcsc@ja - 1L, Xcsc@ia - 1L,
               A, B, dimA, dimB, k,
-              use_cg, l2_reg, l1_reg,
+              use_cg, limit_step, l2_reg, l1_reg,
               weight_mult, initial_step,
               niter, nupd, nthreads)
     } else { ## 'Matrix'
@@ -306,7 +318,7 @@ poismf <- function(X, k = 30, use_cg = FALSE, l2_reg = ifelse(use_cg, 1e5, 1e9),
               Xcsr@x, Xcsr@i, Xcsr@p,
               Xcsc@x, Xcsc@i, Xcsc@p,
               A, B, dimA, dimB, k,
-              use_cg, l2_reg, l1_reg,
+              use_cg, limit_step, l2_reg, l1_reg,
               weight_mult, initial_step,
               niter, nupd, nthreads)
     }
@@ -320,6 +332,7 @@ poismf <- function(X, k = 30, use_cg = FALSE, l2_reg = ifelse(use_cg, 1e5, 1e9),
         Bsum = Bsum,
         k = k,
         use_cg = use_cg,
+        limit_step = limit_step,
         weight_mult = weight_mult,
         l1_reg = l1_reg,
         l2_reg = l2_reg,
@@ -371,10 +384,11 @@ poismf_unsafe <- function(A, B, Xcsr, Xcsc, k, ...) {
     return(poismf__unsafe(A, B, Xcsr, Xcsc, k, ...))
 }
 
-poismf__unsafe <- function(A, B, Xcsr, Xcsc, k, use_cg=FALSE, l1_reg=0.,
-                           l2_reg=ifelse(use_cg, 1e5, 1e9),
-                           weight_mult=1., initial_step=1e-7, niter=10,
+poismf__unsafe <- function(A, B, Xcsr, Xcsc, k, use_cg=FALSE, limit_step=TRUE,
+                           l2_reg=ifelse(use_cg, 1e5, 1e9), l1_reg=0.,
+                           niter=ifelse(use_cg, 20, 10),
                            nupd=ifelse(use_cg, 5, 1),
+                           initial_step=1e-7, weight_mult=1.,
                            nthreads=parallel::detectCores()) {
     dimA <- NROW(A) / (ifelse(is.null(dim(A)), k, 1))
     dimB <- NROW(B) / (ifelse(is.null(dim(B)), k, 1))
@@ -391,6 +405,7 @@ poismf__unsafe <- function(A, B, Xcsr, Xcsc, k, use_cg=FALSE, l1_reg=0.,
         Bsum = rowSums(matrix(B, nrow=k, ncol=dimB)) + l1_reg,
         k = k,
         use_cg = use_cg,
+        limit_step = limit_step,
         weight_mult = weight_mult,
         l1_reg = l1_reg,
         l2_reg = l2_reg,
@@ -439,14 +454,17 @@ poismf__unsafe <- function(A, B, Xcsr, Xcsc, k, use_cg=FALSE, l1_reg=0.,
 #' proximal gradient, which works better with smaller regularization values.
 #' @param l1_reg Strength of the L1 regularization (see description of argument above).
 #' Not recommended.
-#' @param nupd Maximum number of conjugate gradient updates.
 #' @param weight_mult Weight multiplier for the positive entries over the missing entries.
-#' Not recommended.
+#' @param nupd Maximum number of conjugate gradient updates.
+#' @param limit_step Whether to limit the step sizes so as to drive at most 1 variable
+#' to zero after each update. See documentation of \link{poismf} for
+#' details.
 #' @return Vector of dimensionality `model$k` with the latent factors for the user,
 #' given the input data.
 #' @seealso \link{factors} \link{topN.new}
 #' @export
-factors.single <- function(model, X, l2_reg=1e5, l1_reg=0., nupd=100, weight_mult=1.) {
+factors.single <- function(model, X, l2_reg=1e5, l1_reg=0., weight_mult=1.,
+                           nupd=100, limit_step=TRUE) {
     if ( ("levels_B" %in% names(model)) & !("data.frame" %in% class(X)) ) {
         stop("Must pass 'X' as data.frame if model was fit to X as data.frame.")
     }
@@ -464,6 +482,7 @@ factors.single <- function(model, X, l2_reg=1e5, l1_reg=0., nupd=100, weight_mul
     l1_reg <- as.numeric(l1_reg)
     l2_reg <- as.numeric(l2_reg)
     weight_mult <- as.numeric(weight_mult)
+    limit_step  <- as.logical(limit_step)
     
     if ("data.frame" %in% class(X)) {
         xval <- as.numeric(X[[2]])
@@ -481,7 +500,7 @@ factors.single <- function(model, X, l2_reg=1e5, l1_reg=0., nupd=100, weight_mul
                  model$B, model$Bsum,
                  nupd, l2_reg,
                  l1_reg, model$l1_reg,
-                 weight_mult))
+                 weight_mult, limit_step))
 }
 
 #' @title Determine latent factors for new rows/users
@@ -603,7 +622,8 @@ factors <- function(model, X, add_names=TRUE) {
                   Xr_indptr, Xr_indices, Xr_values,
                   model$l2_reg, model$weight_mult,
                   model$initial_step, model$niter, model$nupd,
-                  model$use_cg, model$nthreads)
+                  model$use_cg, model$limit_step,
+                  model$nthreads)
     Anew <- t(matrix(Anew, nrow=model$k))
     if (add_names & ("levels_A" %in% names(model))) {
         row.names(Anew) <- levs
@@ -816,7 +836,7 @@ topN_internal <- function(model, a_vec, n, include, exclude, output_score) {
 #' one of `include` or `exclude`. Must not contain duplicated entries.
 #' @param output_score Whether to output the scores in addition to the IDs. If passing
 #' `FALSE`, will return a single array with the item IDs, otherwise
-#' will return a tuple with the item IDs and the scores.
+#' will return a list with the item IDs and the scores.
 #' @return \itemize{
 #'   \item If passing `output_score=FALSE` (the default), will return a vector of size `n`
 #'   with the top-N highest predicted items for this user.If the `X` data passed to
@@ -864,13 +884,17 @@ topN <- function(model, user, n = 10, include = NULL, exclude = NULL, output_sco
 #' one of `include` or `exclude`. Must not contain duplicated entries.
 #' @param output_score Whether to output the scores in addition to the IDs. If passing
 #' `FALSE`, will return a single array with the item IDs, otherwise
-#' will return a tuple with the item IDs and the scores.
+#' will return a list with the item IDs and the scores.
 #' @param l2_reg Strength of L2 regularization to use for optimizing the new factors. Note
 #' that these are obtained through a conjugate-gradient method instead of
 #' proximal gradient, which works better with smaller regularization values.
 #' @param l1_reg Strength of the L1 regularization (see description of argument above).
 #' Not recommended.
+#' @param weight_mult Weight multiplier for the positive entries over the missing entries.
 #' @param nupd Maximum number of conjugate gradient updates.
+#' @param limit_step Whether to limit the step sizes so as to drive at most 1 variable
+#' to zero after each update. See documentation of \link{poismf} for
+#' details.
 #' @return \itemize{
 #'   \item If passing `output_score=FALSE` (the default), will return a vector of size `n`
 #'   with the top-N highest predicted items for this user.If the `X` data passed to
@@ -885,8 +909,11 @@ topN <- function(model, user, n = 10, include = NULL, exclude = NULL, output_sco
 #' @seealso \link{factors.single} \link{topN}
 #' @export
 topN.new <- function(model, X, n=10, include=NULL, exclude=NULL, output_score=FALSE,
-                     l2_reg = 1e5, l1_reg = 0., nupd = 50) {
-    a_vec <- factors.single(model, X, l2_reg=l2_reg, l1_reg=l1_reg, nupd=nupd)
+                     l2_reg = 1e5, l1_reg = 0., weight_mult = 1.,
+                     nupd = 100, limit_step = TRUE) {
+    a_vec <- factors.single(model, X, l2_reg=l2_reg, l1_reg=l1_reg,
+                            weight_mult=weight_mult, nupd=nupd,
+                            limit_step=limit_step)
     return(topN_internal(model, a_vec, n, include, exclude, output_score))
 }
 
@@ -1035,7 +1062,7 @@ get.model.mappings <-  function(model) {
 #' @return Obtained Poisson log-likelihood (higher is better).
 #' @seealso \link{poismf}
 #' @export
-evaluate.poisson.llk <- function(model, X_test, full_llk = FALSE, include_missing = FALSE) {
+poisson.llk <- function(model, X_test, full_llk = FALSE, include_missing = FALSE) {
     if ( ("levels_A" %in% class(model)) & !("data.frame" %in% class(X_test)) ) {
         stop("Must pass 'X_test' as data.frame if model was fit to X as data.frame.")
     }

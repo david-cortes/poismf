@@ -143,7 +143,7 @@ int factors_multiple
     int k, size_t dimA,
     double l2_reg, double w_mult,
     double step_size, size_t niter, size_t npass,
-    bool use_cg,
+    bool use_cg, bool limit_step,
     int nthreads
 )
 {
@@ -188,7 +188,7 @@ int factors_multiple
     if (use_cg)
     {
         cg_iteration(A, B, Xr, Xr_indptr, Xr_indices,
-                     dimA, k_szt,
+                     dimA, k_szt, limit_step,
                      Bsum, l2_reg, w_mult, npass * niter,
                      buffer_arr, Bsum_w, nthreads);
     }
@@ -218,7 +218,7 @@ int factors_single
     double *restrict X, sparse_ix X_ind[], size_t nnz,
     double *restrict B, double *restrict Bsum,
     size_t npass, double l2_reg, double l1_new, double l1_old,
-    double w_mult
+    double w_mult, bool limit_step
 )
 {
     /* Note: Bsum should already have the *old* l1 regularization added to it */
@@ -268,7 +268,7 @@ int factors_single
         out, (int)k, &fun_val,
         calc_fun_single, calc_grad_single, NULL, (void*) &data,
         1e-5, 250, npass, &niter, &nfeval,
-        0.25, 0.01, 20,
+        0.25, 0.01, 20, limit_step,
         NULL, 1, 0);
 
     if (l1_reg > 0. || w_mult != 1.) free(Bsum_pass);

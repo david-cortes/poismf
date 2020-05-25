@@ -80,7 +80,8 @@ SEXP wrapper_run_poismf
     SEXP Xr, SEXP Xr_indices, SEXP Xr_indptr,
     SEXP Xc, SEXP Xc_indices, SEXP Xc_indptr,
     SEXP A, SEXP B, SEXP dimA, SEXP dimB, SEXP k,
-    SEXP use_cg, SEXP l2_reg, SEXP l1_reg,
+    SEXP use_cg, SEXP limit_step,
+    SEXP l2_reg, SEXP l1_reg,
     SEXP w_mult, SEXP step_size,
     SEXP niter, SEXP npass, SEXP nthreads
 )
@@ -91,7 +92,7 @@ SEXP wrapper_run_poismf
         (size_t) Rf_asInteger(dimA), (size_t) Rf_asInteger(dimB),
         (size_t) Rf_asInteger(k), Rf_asReal(l2_reg), Rf_asReal(l1_reg),
         Rf_asReal(w_mult), Rf_asReal(step_size),
-        (bool) Rf_asLogical(use_cg),
+        (bool) Rf_asLogical(use_cg), (bool) Rf_asLogical(limit_step),
         (size_t) Rf_asInteger(niter), (size_t) Rf_asInteger(npass),
         Rf_asInteger(nthreads)
     );
@@ -126,7 +127,7 @@ SEXP wrapper_predict_factors
     SEXP npass,
     SEXP l2_reg,
     SEXP l1_new, SEXP l1_old,
-    SEXP w_mult
+    SEXP w_mult, SEXP limit_step
 )
 {
     size_t k_szt = (size_t) Rf_asInteger(k);
@@ -136,12 +137,14 @@ SEXP wrapper_predict_factors
     int ret_code = factors_single(
         REAL(out), k_szt,
         REAL(A_old), dimA,
-        REAL(counts), INTEGER(ix), (sparse_ix) Rf_length(counts),
+        REAL(counts), INTEGER(ix),
+        (sparse_ix) Rf_length(counts),
         REAL(B), REAL(Bsum),
         (size_t) Rf_asInteger(npass),
         Rf_asReal(l2_reg),
         Rf_asReal(l1_new), Rf_asReal(l1_old),
-        Rf_asReal(w_mult)
+        Rf_asReal(w_mult),
+        (bool) Rf_asLogical(limit_step)
     );
 
     UNPROTECT(1);
@@ -159,7 +162,7 @@ SEXP wrapper_predict_factors_multiple
     SEXP Xr_indptr, SEXP Xr_indices, SEXP Xr,
     SEXP l2_reg, SEXP w_mult,
     SEXP step_size, SEXP niter, SEXP npass,
-    SEXP use_cg, SEXP nthreads
+    SEXP use_cg, SEXP limit_step, SEXP nthreads
 )
 {
     SEXP out = PROTECT(Rf_allocVector(REALSXP, (size_t)Rf_asInteger(k)
@@ -173,6 +176,7 @@ SEXP wrapper_predict_factors_multiple
         Rf_asReal(step_size), (size_t) Rf_asInteger(niter),
         (size_t) Rf_asInteger(npass),
         (bool) Rf_asLogical(use_cg),
+        (bool) Rf_asLogical(limit_step),
         Rf_asInteger(nthreads)
     );
 
@@ -237,10 +241,10 @@ SEXP wrapper_topN
 
 
 static const R_CallMethodDef callMethods [] = {
-    {"wrapper_run_poismf", (DL_FUNC) &wrapper_run_poismf, 19},
+    {"wrapper_run_poismf", (DL_FUNC) &wrapper_run_poismf, 20},
     {"wrapper_predict_multiple", (DL_FUNC) &wrapper_predict_multiple, 6},
-    {"wrapper_predict_factors", (DL_FUNC) &wrapper_predict_factors, 11},
-    {"wrapper_predict_factors_multiple", (DL_FUNC) &wrapper_predict_factors_multiple, 15},
+    {"wrapper_predict_factors", (DL_FUNC) &wrapper_predict_factors, 12},
+    {"wrapper_predict_factors_multiple", (DL_FUNC) &wrapper_predict_factors_multiple, 16},
     {"wrapper_eval_llk", (DL_FUNC) &wrapper_eval_llk, 11},
     {"wrapper_topN", (DL_FUNC) &wrapper_topN, 9},
     {NULL, NULL, 0}
