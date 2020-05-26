@@ -22,11 +22,7 @@ class build_ext_subclass( build_ext_with_blas ):
             for e in self.extensions:
                 e.extra_compile_args += ['-O2', '-fopenmp', '-march=native', '-std=c99']
                 e.extra_link_args += ['-fopenmp']
-                # e.extra_compile_args += ['-O2', '-std=c99', "-fsanitize=address", "-static-libasan", "-ggdb"]
-                # e.extra_link_args += ["-fsanitize=address", "-static-libasan"]
-        from_rtd = os.environ.get('READTHEDOCS') == 'True'
-        if not from_rtd:
-            build_ext_with_blas.build_extensions(self)
+        build_ext_with_blas.build_extensions(self)
 
 
 setup(

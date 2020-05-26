@@ -16,10 +16,6 @@ import os
 import sys
 sys.path.insert(0, os.path.abspath('../'))
 
-import mock 
-MOCK_MODULES = ['poismf.poismf_c_wrapper']
-sys.modules.update((mod_name, mock.MagicMock()) for mod_name in MOCK_MODULES)
-
 # -- Project information -----------------------------------------------------
 
 project = 'poismf'
