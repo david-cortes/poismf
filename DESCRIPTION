@@ -1,9 +1,9 @@
 Package: poismf
 Type: Package
 Title: Factorization of Sparse Counts Matrices Through Poisson Likelihood
-Version: 0.2.1
-Date: 2020-05-25
-Author: David Cortes
+Version: 0.2.2
+Date: 2020-05-28
+Author: David Cortes [aut, cre, cph], Jean-Sebastien Roy [cph], Stephen Nash [cph]
 Maintainer: David Cortes <david.cortes.rivera@gmail.com>
 URL: https://github.com/david-cortes/poismf
 BugReports: https://github.com/david-cortes/poismf/issues

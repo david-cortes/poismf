@@ -4,20 +4,24 @@ import ctypes
 
 cdef extern from "../src/poismf.h":
     ctypedef size_t sparse_ix
+    ctypedef enum Method:
+        tncg = 1
+        cg = 2
+        pg = 3
     int run_poismf(
         double *A, double *Xr, sparse_ix *Xr_indptr, sparse_ix *Xr_indices,
         double *B, double *Xc, sparse_ix *Xc_indptr, sparse_ix *Xc_indices,
         const size_t dimA, const size_t dimB, const size_t k,
         const double l2_reg, const double l1_reg, const double w_mult, double step_size,
-        const bint use_cg, const bint use_cg, const size_t numiter, const size_t npass,
+        const Method method, const bint limit_step, const size_t numiter, const size_t maxupd,
         const int nthreads)
     int factors_single(
         double *out, size_t k,
         double *A_old, size_t dimA,
         double *X, sparse_ix X_ind[], size_t nnz,
         double *B, double *Bsum,
-        size_t npass, double l2_reg, double l1_new, double l1_old,
-        double w_mult, bint limit_step
+        int maxupd, double l2_reg, double l1_new, double l1_old,
+        double w_mult
     )
     void predict_multiple(
         double *out,
@@ -42,8 +46,8 @@ cdef extern from "../src/poismf.h":
         double *Xr, sparse_ix *Xr_indptr, sparse_ix *Xr_indices,
         int k, size_t dimA,
         double l2_reg, double w_mult,
-        double step_size, size_t niter, size_t npass,
-        bint use_cg, bint limit_step,
+        double step_size, size_t niter, size_t maxupd,
+        Method method, bint limit_step,
         int nthreads
     )
     int topN(
@@ -63,21 +67,28 @@ def _run_poismf(
     np.ndarray[size_t, ndim=1] Xc_indptr,
     np.ndarray[double, ndim=2] A,
     np.ndarray[double, ndim=2] B,
-    bint use_cg=0, bint limit_step=0,
+    method="tncg", bint limit_step=0,
     double l2_reg=1e9, double l1_reg=0, double w_mult=1.,
     double step_size=1e-7,
-    size_t niter=10, size_t npass=1, int nthreads=1):
+    size_t niter=10, size_t maxupd=1, int nthreads=1):
 
     cdef size_t dimA = A.shape[0]
     cdef size_t dimB = B.shape[0]
     cdef size_t k = A.shape[1]
+    cdef Method c_method = tncg
+    if method == "tncg":
+        c_method = tncg
+    elif method == "cg":
+        c_method = cg
+    elif method == "pg":
+        c_method = pg
 
     cdef int ret_code = run_poismf(
         &A[0,0], &Xr[0], &Xr_indptr[0], &Xr_indices[0],
         &B[0,0], &Xc[0], &Xc_indptr[0], &Xc_indices[0],
         dimA, dimB, k,
         l2_reg, l1_reg, w_mult, step_size,
-        use_cg, limit_step, niter, npass, nthreads
+        c_method, limit_step, niter, maxupd, nthreads
         )
     if ret_code == 1:
         raise MemoryError("Could not allocate enough memory.")
@@ -92,7 +103,7 @@ def _predict_factors(
         np.ndarray[size_t, ndim=1] ix,
         np.ndarray[double, ndim=2] B,
         np.ndarray[double, ndim=1] Bsum,
-        size_t npass = 20,
+        size_t maxupd = 20,
         double l2_reg = 1e5,
         double l1_new = 0., double l1_old = 0.,
         double w_mult = 1., bint limit_step = 0,
@@ -103,8 +114,8 @@ def _predict_factors(
         &A_old[0,0], <size_t> A_old.shape[0],
         &counts[0], &ix[0], <size_t> counts.shape[0],
         &B[0,0], &Bsum[0],
-        npass, l2_reg, l1_new, l1_old,
-        w_mult, limit_step
+        maxupd, l2_reg, l1_new, l1_old,
+        w_mult
     )
     if ret_code != 0:
         raise MemoryError("Could not allocate enough memory.")
@@ -121,8 +132,8 @@ def _predict_factors_multiple(
         double w_mult = 1.,
         double step_size = 1e-7,
         size_t niter = 10,
-        size_t npass = 1,
-        bint use_cg = 0,
+        size_t maxupd = 1,
+        method = "tncg",
         bint limit_step = 0,
         int nthreads = 1
     ):
@@ -138,13 +149,21 @@ def _predict_factors_multiple(
     cdef size_t *ptr_Xr_indices = &Xr_indices[0]
     cdef double *ptr_Xr = &Xr[0]
 
+    cdef Method c_method = tncg
+    if method == "tncg":
+        c_method = tncg
+    elif method == "cg":
+        c_method = cg
+    elif method == "pg":
+        c_method = pg
+
     cdef int returned_val = factors_multiple(
         ptr_A, ptr_B, ptr_A_old, ptr_Bsum,
         ptr_Xr, ptr_Xr_indptr, ptr_Xr_indices,
         k, dimA,
         l2_reg, w_mult,
-        step_size, niter, npass,
-        use_cg, limit_step,
+        step_size, niter, maxupd,
+        c_method, limit_step,
         nthreads
     )
 

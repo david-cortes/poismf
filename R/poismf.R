@@ -6,26 +6,13 @@
 #' @useDynLib poismf, .registration=TRUE
 
 #' @title Factorization of Sparse Counts Matrices through Poisson Likelihood
-#' @description Creates a low-rank non-negative factorization of a sparse counts matrix by
-#' maximizing Poisson likelihood minus L1/L2 regularization, using gradient-based
-#' optimization procedures.
+#' @description Creates a low-rank non-negative factorization of a sparse counts
+#' matrix by maximizing Poisson likelihood minus L1/L2 regularization, using
+#' gradient-based optimization procedures.
 #' 
 #' Ideal for usage in recommender systems, in which the `X` matrix would consist of
 #' interactions (e.g. clicks, views, plays), with users representing the rows and items
 #' representing the columns.
-#' 
-#' Be aware that this model is prone to numerical instability when using proximal gradient, and can
-#' turn out to spit all NaNs or zeros in the fitted parameters. As an alternative, can use
-#' a conjugate gradient approach instead, which is slower but
-#' not susceptible to such failures.
-#' 
-#' The default hyperparameters are geared towards very fast fitting times, and
-#' might not be very competitive against other implicit-feedback methods when
-#' used as-is. It's also possible to obtain better quality models that compare
-#' very favorably against e.g. implicit-ALS/HPF/BPR/etc. by using a much larger
-#' number of iterations and updates, lower regularization, and the conjugate gradient
-#' option - this will take many times longer than with the default hyperparameters,
-#' but usually it's still faster than other factorization models.
 #' @param X The counts matrix to factorize. Can be: \itemize{
 #' \item A `data.frame` with 3 columns, containing in this order:
 #' row index or user ID, column index or item ID, count value. The first two columns will
@@ -41,56 +28,57 @@
 #' \item A sparse matrix in COO format from the `SparseM` package. Such a matrix
 #' can be created from row/column indices through
 #' `new("matrix.coo", ra=values, ja=col_ix, ia=row_ix, dim=as.integer(c(m,n)))`.
-#' Will also accept them in CSR and CSC format, but will be converted along the way,
+#' Will also accept them in CSR and CSC format, but will be converted along the way
 #' (so it will be slightly slower).
 #' \item A full matrix (of class `base::matrix`) - this is not recommended though.
 #' }
 #' Passing sparse matrices is faster as it will not need to re-enumerate the rows and columns,
-#' but if passing a sparse matrix, it cannot have any row or column with all-zero values,
-#' otherwise the optimization procedure might fail.
 #' Full matrices will be converted to sparse.
 #' @param k Number of latent factors to use (dimensionality of the low-rank factorization).
-#' Note that since this model deals with non-negative latent factors only and the
-#' optimal number for every entry is a very small number (depending on sparsity
-#' and regularization), the optimal `k` is likely to be low, while passing large
-#' values (e.g. > 100) is likely to produce bad results. If passing large `k`,
-#' it's recommended to use `use_cg=TRUE`.
-#' @param use_cg Whether to fit the model through conjugate gradient method. This is slower,
-#' but less prone to failure, usually reaches better local optima, and is able
-#' to fit models with lower regularization values.
-#' @param limit_step When passing `use_cg=TRUE`, whether to limit the step sizes in each update
+#' If `k` is small (e.g. `k=5`), it's recommended to use `method='pg'`.
+#' For large values, (e.g. `k=100`), it's recommended to use `method='tncg'`.
+#' For medium values (e.g. `k=50`), it's recommende to use either
+#' `method='tncg'` or `method='cg'`.
+#' @param method Optimization method to use. Options are: \itemize{
+#' \item `"tncg"` : will use a truncated Newton-CG method. This is the
+#' slowest option, but tends to find better local optima, and if run
+#' for many iterations, tends to produce sparse latent factor
+#' matrices.
+#' \item `"cg"` : will use a Conjugate Gradient method, which is faster
+#' than the truncated Newton-CG, but tends not to reach the best local
+#' optima. Usually, with this method and the default hyperparameters,
+#' the latent factor matrices will not be very sparse.
+#' \item `"pg"` : will use a proximal gradient method, which is a lot faster
+#' than the other two and more memory-efficient, but tends to only work
+#' with very large regularization values, and doesn't find as good
+#' local optima, nor tends to result in sparse factors.
+#' }
+#' @param limit_step When passing `method='cg'`, whether to limit the step sizes in each update
 #' so as to drive at most one variable to zero each time, as prescribed in [2].
 #' If running the procedure for many iterations, it's recommended to set this
-#' to `TRUE`. Generally, running the model for many more iterations with
-#' `use_cg=TRUE` and `limit_step=TRUE` tends to produce better results,
-#' but it's slower, and running for few iterations will usually lead to worse
-#' results compared to using `limit_step=FALSE`.
-#' @param l2_reg Strength of L2 regularization. Proximal gradient method will likely fail
-#' to fit when the regularization is too small, and the recommended value
-#' is 10^9. Recommended to decrease it when using conjugate gradient method
-#' to e.g. 10^5 or even zero.
+#' to 'True'. You also might set `method='cg'` plus `maxupd=1` and
+#' `limit_step=FALSE` to reduce the algorithm to simple gradient descent
+#' with a line search.
+#' @param l2_reg Strength of L2 regularization. It is recommended to use small values
+#' along with `method='tncg'`, very large values along with `method='pg'`,
+#' and medium to large values with `method='cg'`. If passing `"auto"`,
+#' will set it to `10^3` for TNCG, `10^5` for CG, and `10^9` for PG.
 #' @param l1_reg Strength of L1 regularization. Not recommended.
 #' @param niter Number of alternating iterations to perform. One iteration denotes an update
-#' over both matrices.
-#' @param nupd \itemize{
-#'   \item When using proximal gradient, this is the number of proximal gradient
-#'   updates to perform to each vector per iteration. Increasing the number of
-#'   iterations instead of this has the same computational complexity and is
-#'   likely to produce better results.
-#'   \item When using conjugate gradient, this is the maximum number of updates
-#'   per iteration, and it's recommended to set it to a larger value such
-#'   as 5 or 10, while perhaps decreasing `niter` (for faster fitting),
-#'   as it will perform a line search in this case. Alternatively, might
-#'   instead set `nupd` to 1 (in which case it becomes gradient descent)
-#'   and `niter` to a large number such as 100. If using large `k`,
-#'   and/or l1 regularization, it's recommended to increase `nupd` due
-#'   to the way constraints are handled in the CG method (see
-#'   reference [2] for details) - e.g. if using `k=100`, set `nupd=25`,
-#'   and maybe also `niter=50` too.
-#' }
-#' @param initial_step Initial step size to use. Larger step sizes reach converge faster, but are
-#' more likely to result in failed optimization. Ignored for conjugate gradient
-#' as it uses a line search instead.
+#' over both matrices. If passing `'auto'`, will set it to 50 for TNCG,
+#' 25 for CG, and 10 for PG.
+#' @param maxupd Maximum number of updates to each user/item vector within an iteration.
+#' You might also want to try decreasing this while increasing `niter`.
+#' For `method='pg'`, this will be taken as the actual number of updates,
+#' as it does not perform a line search like the other methods.
+#' If passing `"auto"`, will set it to `5*k` for `method='tncg'`,
+#' 25 for `method='cg'`, and 10 for `method='pg'`. If using
+#' `method='cg'`, you might also try instead setting `maxupd=1`
+#' and `niter=100`.
+#' @param initial_step Initial step size to use for proximal gradient updates. Larger step sizes
+#' reach converge faster, but are more likely to result in failed optimization.
+#' Ignored when passing `method='tncg'` or `method='cg'`, as those will
+#' perform a line seach instead.
 #' @param weight_mult Extra multiplier for the weight of the positive entries over the missing
 #' entries in the matrix to factorize. Be aware that Poisson likelihood will
 #' implicitly put more weight on the non-missing entries already. Passing larger
@@ -102,6 +90,15 @@
 #' them `~ Gamma(1, 1))` or `'unif'` (will initialize them `~ Unif(0, 1))`..
 #' @param seed Random seed to use for starting the factorizing matrices.
 #' @param nthreads Number of parallel threads to use.
+#' @details In order to obtain sparse latent factor matrices, you need to pass
+#' `method='tncg'` and a large `niter`, such as `niter=50` or `niter=100`.
+#' The L1 regularization approach is not recommended, even though it might
+#' also produce relatively sparse results with the other optimization methods.
+#' 
+#' When using proximal gradient method, this model is prone to numerical
+#' instability, and can turn out to spit all NaNs or zeros in the fitted
+#' parameters. The conjugate gradient and Newton-CG methods are not prone to
+#' such failed optimizations.
 #' @references \itemize{
 #' \item Cortes, David.
 #' "Fast Non-Bayesian Poisson Factorization for Implicit-Feedback Recommendations."
@@ -109,6 +106,9 @@
 #' \item Li, Can.
 #' "A conjugate gradient type method for the nonnegative constraints optimization problems."
 #' Journal of Applied Mathematics 2013 (2013).
+#' \item Carlsson, Christer, et al.
+#' "User's guide for TN/TNBC: Fortran routines for nonlinear optimization."
+#' Mathematical Sciences Dept. Tech. Rep. 307, The Johns Hopkins University. 1984.
 #' }
 #' @return An object of class `poismf` with the following fields of interest:
 #' @field A The user/document/row-factor matrix (as a vector in row-major order,
@@ -139,22 +139,27 @@
 #' 
 #' ### can also pass X as sparse matrix - see below
 #' ### X <- Matrix::sparseMatrix(
-#' ###         i=X$row_ix, j=X$col_ix, x=X$count,
-#' ###         giveCsparse=FALSE)
+#' ###          i=X$row_ix, j=X$col_ix, x=X$count,
+#' ###          giveCsparse=FALSE)
 #' ### the indices can also be characters or other types:
 #' ### X$row_ix <- paste0("user", X$row_ix)
 #' ### X$col_ix <- paste0("item", X$col_ix)
 #' 
 #' ### factorize the randomly-generated sparse matrix
 #' ### good speed (proximal gradient)
-#' model <- poismf(X, use_cg=FALSE, nthreads=1)
+#' model <- poismf(X, k=5, method="pg", nthreads=1)
 #' 
 #' ### good quality, but slower (conjugate gradient)
-#' model <- poismf(X, use_cg=TRUE, nthreads=1)
+#' model <- poismf(X, k=5, method="cg", nthreads=1)
 #' 
-#' ### good quality, but much slower (gradient descent)
-#' model <- poismf(X, use_cg=TRUE, limit_step=FALSE,
-#'             niter=100, nupd=1, nthreads=1)
+#' ### better quality, but much slower (truncated Newton-CG)
+#' model <- poismf(X, k=5, method="tncg", nthreads=1)
+#' 
+#' \donttest{
+#' ### for getting sparse factors
+#' model <- poismf(X, k=50, method="tncg")
+#' mean(model$A == 0.)
+#' }
 #' 
 #' ### predict functionality (chosen entries in X)
 #' ### predict entry [1, 10] (row 1, column 10)
@@ -177,35 +182,54 @@
 #' sqrt(mean((A_full["2",] - A_orig["2",])^2))
 #' @seealso \link{predict.poismf} \link{topN} \link{factors}
 #' \link{get.factor.matrices} \link{get.model.mappings}
-poismf <- function(X, k = 50, use_cg = TRUE, limit_step = TRUE,
-                   l2_reg = ifelse(use_cg, 1e5, 1e9), l1_reg = 0,
-                   niter = ifelse(use_cg, 20, 10),
-                   nupd = ifelse(use_cg, 5, 1), initial_step = 1e-7,
+poismf <- function(X, k = 50, method = "tncg",
+                   l2_reg = "auto", l1_reg = 0,
+                   niter = "auto", maxupd = "auto",
+                   limit_step = TRUE, initial_step = 1e-7,
                    weight_mult = 1, init_type = "gamma", seed = 1,
                    nthreads = parallel::detectCores()) {
     
     ### Check input parameters
+    allowed_methods <- c("tncg", "cg", "pg")
+    if (!(method %in% allowed_methods) || (NROW(method) != 1))
+        stop(paste0("'method' must be one of: ", paste(allowed_methods, collapse=", ")))
+    if (NROW(k) > 1 || k < 1) { stop("'k' must be a positive integer.") }
+    
+    if (l2_reg == "auto")
+        l2_reg <- switch(method, "tncg"=1e3, "cg"=1e5, "pg"=1e9)
+    if (niter == "auto")
+        niter <- switch(method, "tncg"=50L, "cg"=25L, "pg"=10L)
+    if (maxupd == "auto")
+        maxupd <- switch(method, "tncg"=5L*k, "cg"=5L, "pg"=1L)
+    
     if (NROW(niter) > 1 || niter < 1) { stop("'niter' must be a positive integer.") }
     if (NROW(nthreads) > 1 || nthreads < 1) {nthreads <- parallel::detectCores()}
-    if (NROW(k) > 1 || k < 1) { stop("'k' must be a positive integer.") }
-    if (NROW(use_cg) < 1) { stop("'use_cg' must be a boolean/logical.") }
     if (NROW(limit_step) < 1) { stop("'limit_step' must be a boolean/logical.") }
-    if (NROW(initial_step) > 1 || initial_step <= 0) {stop("'initial_step' must be a positive number.")}
-    if (nupd < 1) {stop("'nupd' must be a positive integer.")}
-    if (l1_reg < 0 | l2_reg < 0) {stop("Regularization parameters must be non-negative.")}
-    if (weight_mult <= 0) { stop("'weight_mult' must be a positive number.") }
-    if (init_type != "gamma" & init_type != "uniform") {stop("'init_type' must be one of 'gamma' or 'uniform'.")}
+    if (NROW(initial_step) > 1 || initial_step <= 0)
+        stop("'initial_step' must be a positive number.")
+    if (maxupd < 1) {stop("'maxupd' must be a positive integer.")}
+    if (l1_reg < 0. | l2_reg < 0.) {stop("Regularization parameters must be non-negative.")}
+    if (weight_mult <= 0.) { stop("'weight_mult' must be a positive number.") }
+    if (init_type != "gamma" & init_type != "uniform")
+        {stop("'init_type' must be one of 'gamma' or 'uniform'.")}
     
+    ### Cast them to required type
     k            <- as.integer(k)
     l1_reg       <- as.numeric(l1_reg)
     l2_reg       <- as.numeric(l2_reg)
-    use_cg       <- as.logical(use_cg)
+    method       <- as.character(method)
     limit_step   <- as.logical(limit_step)
     weight_mult  <- as.numeric(weight_mult)
     initial_step <- as.numeric(initial_step)
     niter        <- as.integer(niter)
-    nupd         <- as.integer(nupd)
+    maxupd       <- as.integer(maxupd)
     nthreads     <- as.integer(nthreads)
+    
+    method_code <- switch(method,
+                          "tncg" = 1,
+                          "cg"   = 2,
+                          "pg"   = 3)
+    method_code <- as.integer(method_code)
     
     is_df <- FALSE
     
@@ -310,17 +334,17 @@ poismf <- function(X, k = 50, use_cg = TRUE, limit_step = TRUE,
               Xcsr@ra, Xcsr@ja - 1L, Xcsr@ia - 1L,
               Xcsc@ra, Xcsc@ja - 1L, Xcsc@ia - 1L,
               A, B, dimA, dimB, k,
-              use_cg, limit_step, l2_reg, l1_reg,
+              method_code, limit_step, l2_reg, l1_reg,
               weight_mult, initial_step,
-              niter, nupd, nthreads)
+              niter, maxupd, nthreads)
     } else { ## 'Matrix'
         .Call("wrapper_run_poismf",
               Xcsr@x, Xcsr@i, Xcsr@p,
               Xcsc@x, Xcsc@i, Xcsc@p,
               A, B, dimA, dimB, k,
-              use_cg, limit_step, l2_reg, l1_reg,
+              method_code, limit_step, l2_reg, l1_reg,
               weight_mult, initial_step,
-              niter, nupd, nthreads)
+              niter, maxupd, nthreads)
     }
     
     ### Return all info
@@ -331,13 +355,13 @@ poismf <- function(X, k = 50, use_cg = TRUE, limit_step = TRUE,
         B = B,
         Bsum = Bsum,
         k = k,
-        use_cg = use_cg,
+        method = method,
         limit_step = limit_step,
         weight_mult = weight_mult,
         l1_reg = l1_reg,
         l2_reg = l2_reg,
         niter = niter,
-        nupd = nupd,
+        maxupd = maxupd,
         initial_step = initial_step,
         init_type = init_type,
         dimA = dimA,
@@ -370,7 +394,7 @@ poismf <- function(X, k = 50, use_cg = TRUE, limit_step = TRUE,
 #' \bold{Will be modified in-place}.
 #' @param B Initial values for the item-factor matrix of dimensions [dimB, k]. See
 #' documentation about `A` for more details.
-#' @param Xcsr The transpose of the `X` matrix in CSC format (so that its structure
+#' @param Xcsr The \bold{transpose} of the `X` matrix in CSC format (so that its structure
 #' would match a CSR matrix). Should be an object of class `Matrix::dgCMatrix`.
 #' @param Xcsc The `X` matrix in CSC format. Should be an object of class `Matrix::dgCMatrix`.
 #' @param k The number of latent factors. \bold{Must match with the dimension of `A` and `B`}.
@@ -378,39 +402,86 @@ poismf <- function(X, k = 50, use_cg = TRUE, limit_step = TRUE,
 #' for \link{poismf} for details about possible hyperparameters. Init type and seed are
 #' ignored as the `A` and `B` matrices are supposed to be passed already-initialized.
 #' @return A `poismf` model object. See the documentation for \link{poismf} for details.
+#' @examples
+#' library(poismf)
+#' 
+#' ### create a random sparse data frame in COO format
+#' nrow <- 10^2 ## <- users
+#' ncol <- 10^3 ## <- items
+#' nnz  <- 10^4 ## <- events (agg)
+#' set.seed(1)
+#' X <- data.frame(
+#'         row_ix = sample(nrow, size=nnz, replace=TRUE),
+#'         col_ix = sample(ncol, size=nnz, replace=TRUE),
+#'         count  = rpois(nnz, 1) + 1
+#'      )
+#' X <- X[!duplicated(X[, c("row_ix", "col_ix")]), ]
+#' 
+#' ### convert to required format
+#' Xcsr <- Matrix::sparseMatrix(
+#'             i=X$col_ix, j=X$row_ix, x=X$count,
+#'             giveCsparse=TRUE
+#' )
+#' Xcsc <- Matrix::sparseMatrix(
+#'             i=X$row_ix, j=X$col_ix, x=X$count,
+#'             giveCsparse=TRUE
+#' )
+#' 
+#' ### initialize factor matrices
+#' k <- 5L
+#' A <- rgamma(nrow*k, 1, 1)
+#' B <- rgamma(ncol*k, 1, 1)
+#' 
+#' ### call function
+#' model <- poismf_unsafe(A, B, Xcsr, Xcsc, k)
 #' @seealso \link{poismf}
 #' @export
 poismf_unsafe <- function(A, B, Xcsr, Xcsc, k, ...) {
     return(poismf__unsafe(A, B, Xcsr, Xcsc, k, ...))
 }
 
-poismf__unsafe <- function(A, B, Xcsr, Xcsc, k, use_cg=FALSE, limit_step=TRUE,
-                           l2_reg=ifelse(use_cg, 1e5, 1e9), l1_reg=0.,
-                           niter=ifelse(use_cg, 20, 10),
-                           nupd=ifelse(use_cg, 5, 1),
-                           initial_step=1e-7, weight_mult=1.,
-                           nthreads=parallel::detectCores()) {
+poismf__unsafe <- function(A, B, Xcsr, Xcsc, k, method="tncg",
+                           l2_reg="auto", l1_reg=0.,
+                           niter="auto",
+                           maxupd="auto",
+                           limit_step=TRUE, initial_step=1e-7,
+                           weight_mult=1.,
+                           nthreads=parallel::detectCores(),
+                           init_type=NULL,
+                           seed=NULL) {
+    if (l2_reg == "auto")
+        l2_reg <- switch(method, "tncg"=1e3, "cg"=1e5, "pg"=1e9)
+    if (niter == "auto")
+        niter <- switch(method, "tncg"=50L, "cg"=25L, "pg"=10L)
+    if (maxupd == "auto")
+        maxupd <- switch(method, "tncg"=5L*k, "cg"=5L, "pg"=1L)
+    
     dimA <- NROW(A) / (ifelse(is.null(dim(A)), k, 1))
     dimB <- NROW(B) / (ifelse(is.null(dim(B)), k, 1))
+    method_code <- switch(method,
+                          "tncg" = 1,
+                          "cg"   = 2,
+                          "pg"   = 3)
+    method_code <- as.integer(method_code)
     .Call("wrapper_run_poismf",
           Xcsr@x, Xcsr@i, Xcsr@p,
           Xcsc@x, Xcsc@i, Xcsc@p,
           A, B, dimA, dimB, k,
-          use_cg, l2_reg, l1_reg,
+          method_code, limit_step, l2_reg, l1_reg,
           weight_mult, initial_step,
-          niter, nupd, nthreads)
+          niter, maxupd, nthreads)
     out <- list(
         A = A,
         B = B,
         Bsum = rowSums(matrix(B, nrow=k, ncol=dimB)) + l1_reg,
         k = k,
-        use_cg = use_cg,
+        method = method,
         limit_step = limit_step,
         weight_mult = weight_mult,
         l1_reg = l1_reg,
         l2_reg = l2_reg,
         niter = niter,
-        nupd = nupd,
+        maxupd = maxupd,
         initial_step = initial_step,
         init_type = "custom",
         dimA = dimA,
@@ -428,19 +499,11 @@ poismf__unsafe <- function(A, B, Xcsr, Xcsc, k, use_cg=FALSE, limit_step=TRUE,
 #' function \link{factors} for getting factors for multiple users/rows at
 #' a time.
 #' 
-#' This function works with one user at a time, and will use a
-#' conjugate gradient approach regardless of how the model was fit.
-#' As well, it will use the regularization parameter passed here instead of
-#' the original one from the model, which means the obtained factors might
-#' not end up being in the same scale as the original ones which are stored
-#' under `model$A`. See function \link{factors} for a different approach using
-#' the same method with which the model was fit.
-#' 
-#' Be aware that the proximal gradient method, which is the default for fitting
-#' the model and which doesn't try to reach global optima, requires larger
-#' regularization, whereas the conjugate gradient method, which tries to find the
-#' global optimum, will fail to fit with too larger regularization (i.e. the
-#' optimal will be all-zeros).
+#' This function works with one user at a time, and will use the
+#' truncated Newton-CG approach regardless of how the model was fit.
+#' Note that, since this optimization method will likely have
+#' different optimal hyperparameters than the other methods, it
+#' offers the option of varying those hyperparameters in here.
 #' @details The factors are initialized to the mean of each column in the fitted model.
 #' @param model Poisson factorization model as returned by `poismf`.
 #' @param X Data with the non-zero item indices and counts for this new user. Can be
@@ -449,41 +512,35 @@ poismf__unsafe <- function(A, B, Xcsr, Xcsc, k, use_cg=FALSE, limit_step=TRUE,
 #' as a `data.frame`, in which case will take the first column as the item/column indices
 #' (numeration starting at 1) and the second column as the counts. If `X` passed to
 #' `poismf` was a `data.frame`, `X` here must also be a `data.frame`.
-#' @param l2_reg Strength of L2 regularization to use for optimizing the new factors. Note
-#' that these are obtained through a conjugate-gradient method instead of
-#' proximal gradient, which works better with smaller regularization values.
-#' @param l1_reg Strength of the L1 regularization (see description of argument above).
-#' Not recommended.
+#' @param l2_reg Strength of L2 regularization to use for optimizing the new factors.
+#' @param l1_reg Strength of the L1 regularization. Not recommended.
 #' @param weight_mult Weight multiplier for the positive entries over the missing entries.
-#' @param nupd Maximum number of conjugate gradient updates.
-#' @param limit_step Whether to limit the step sizes so as to drive at most 1 variable
-#' to zero after each update. See documentation of \link{poismf} for
-#' details.
+#' @param maxupd Maximum number of Newton-CG updates to perform. You might want to
+#' increase this value depending on the use-case.
 #' @return Vector of dimensionality `model$k` with the latent factors for the user,
 #' given the input data.
 #' @seealso \link{factors} \link{topN.new}
 #' @export
-factors.single <- function(model, X, l2_reg=1e5, l1_reg=0., weight_mult=1.,
-                           nupd=100, limit_step=TRUE) {
+factors.single <- function(model, X, l2_reg = model$l2_reg, l1_reg = model$l1_reg,
+                           weight_mult = model$weight_mult, maxupd = model$maxupd) {
     if ( ("levels_B" %in% names(model)) & !("data.frame" %in% class(X)) ) {
         stop("Must pass 'X' as data.frame if model was fit to X as data.frame.")
     }
     if (l2_reg < 0. | l1_reg < 0.) {
         stop("Regularization parameter must be positive.")
     }
-    if (nupd < 1) {
-        stop("'nupd' must be a positive integer.")
+    if (maxupd < 1) {
+        stop("'maxupd' must be a positive integer.")
     }
     if (weight_mult <= 0.) {
         stop("'weight_mult' must be a positive number.")
     }
     
-    nupd   <- as.integer(nupd)
+    maxupd <- as.integer(maxupd)
     l1_reg <- as.numeric(l1_reg)
     l2_reg <- as.numeric(l2_reg)
     weight_mult <- as.numeric(weight_mult)
-    limit_step  <- as.logical(limit_step)
-    
+
     if ("data.frame" %in% class(X)) {
         xval <- as.numeric(X[[2]])
         xind <- process.items.vec(model, X[[1]], "First column of 'X'")
@@ -498,9 +555,9 @@ factors.single <- function(model, X, l2_reg=1e5, l1_reg=0., weight_mult=1.,
                  model$A, model$k,
                  xval, xind,
                  model$B, model$Bsum,
-                 nupd, l2_reg,
+                 maxupd, l2_reg,
                  l1_reg, model$l1_reg,
-                 weight_mult, limit_step))
+                 weight_mult))
 }
 
 #' @title Determine latent factors for new rows/users
@@ -616,13 +673,19 @@ factors <- function(model, X, add_names=TRUE) {
         Xr_values  <- Xcsr@x
     }
     
+    method_code <- switch(model$method,
+                          "tncg" = 1,
+                          "cg"   = 2,
+                          "pg"   = 3)
+    method_code <- as.integer(method_code)
+    
     Anew <- .Call("wrapper_predict_factors_multiple",
                   model$A, as.integer(dimA), model$k,
                   model$B, model$Bsum,
                   Xr_indptr, Xr_indices, Xr_values,
                   model$l2_reg, model$weight_mult,
-                  model$initial_step, model$niter, model$nupd,
-                  model$use_cg, model$limit_step,
+                  model$initial_step, model$niter, model$maxupd,
+                  method_code, model$limit_step,
                   model$nthreads)
     Anew <- t(matrix(Anew, nrow=model$k))
     if (add_names & ("levels_A" %in% names(model))) {
@@ -885,16 +948,11 @@ topN <- function(model, user, n = 10, include = NULL, exclude = NULL, output_sco
 #' @param output_score Whether to output the scores in addition to the IDs. If passing
 #' `FALSE`, will return a single array with the item IDs, otherwise
 #' will return a list with the item IDs and the scores.
-#' @param l2_reg Strength of L2 regularization to use for optimizing the new factors. Note
-#' that these are obtained through a conjugate-gradient method instead of
-#' proximal gradient, which works better with smaller regularization values.
-#' @param l1_reg Strength of the L1 regularization (see description of argument above).
-#' Not recommended.
+#' @param l2_reg Strength of L2 regularization to use for optimizing the new factors.
+#' @param l1_reg Strength of the L1 regularization. Not recommended.
 #' @param weight_mult Weight multiplier for the positive entries over the missing entries.
-#' @param nupd Maximum number of conjugate gradient updates.
-#' @param limit_step Whether to limit the step sizes so as to drive at most 1 variable
-#' to zero after each update. See documentation of \link{poismf} for
-#' details.
+#' @param maxupd Maximum number of Newton-CG updates to perform. You might want to
+#' increase this value depending on the use-case.
 #' @return \itemize{
 #'   \item If passing `output_score=FALSE` (the default), will return a vector of size `n`
 #'   with the top-N highest predicted items for this user.If the `X` data passed to
@@ -908,12 +966,11 @@ topN <- function(model, user, n = 10, include = NULL, exclude = NULL, output_sco
 #' }
 #' @seealso \link{factors.single} \link{topN}
 #' @export
-topN.new <- function(model, X, n=10, include=NULL, exclude=NULL, output_score=FALSE,
-                     l2_reg = 1e5, l1_reg = 0., weight_mult = 1.,
-                     nupd = 100, limit_step = TRUE) {
+topN.new <- function(model, X, n = 10, include = NULL, exclude = NULL, output_score = FALSE,
+                     l2_reg = model$l2_reg, l1_reg = model$l1_reg,
+                     weight_mult = model$weight_mult, maxupd = model$maxupd) {
     a_vec <- factors.single(model, X, l2_reg=l2_reg, l1_reg=l1_reg,
-                            weight_mult=weight_mult, nupd=nupd,
-                            limit_step=limit_step)
+                            weight_mult=weight_mult, maxupd=maxupd)
     return(topN_internal(model, a_vec, n, include, exclude, output_score))
 }
 
@@ -922,15 +979,24 @@ topN.new <- function(model, X, n=10, include=NULL, exclude=NULL, output_score=FA
 #' Note that this will be a dense matrix, and in typical recommender systems scenarios will
 #' likely not fit in memory.
 #' @param model A Poisson factorization model as output by function `poismf`.
-#' @return A matrix `dimA` x `dimB` with the full predictions for all rows and column.
-#' If the inputs did not have numbers as IDs, the equivalences to their IDs in the outputs
-#' are in the `model` object under fields `levels_A` and `levels_B`, and can also be
-#' obtained through function \link{get.model.mappings}.
+#' @return A matrix [dimA x dimB] with the full predictions for all rows and columns.
+#' If the `X` data passed to `poismf` was a `data.frame`, the resulting output will have
+#' row and column names added to it. Be aware that, if `X` was a `data.frame` with integers
+#' as IDs, selecting columns or rows of the named matrix will output ordinal positions
+#' - e.g. `out[2,]` (second row) vs. `out["2",]` (row for ID=2 in `X`).
+#' The mappings, if produced, can be obtained through function \link{get.model.mappings}.
 #' @export
-calc.all.counts <- function(model) {
+get.all.predictions <- function(model) {
     A <- t(matrix(model$A, nrow = model$k))
     B <-   matrix(model$B, nrow = model$k)
-    return(A %*% B)
+    
+    out <- A %*% B
+    if ("levels_A" %in% names(model))
+        row.names(out) <- model$levels_A
+    if ("levels_B" %in% names(model))
+        colnames(out)  <- model$levels_B
+    
+    return(out)
 }
 
 #' @title Get information about poismf object
@@ -940,13 +1006,13 @@ calc.all.counts <- function(model) {
 #' @export
 print.poismf <- function(x, ...) {
     cat("Poisson Matrix Factorization\n\n")
-    cat(sprintf("Fit through %s gradient\n", ifelse(x$use_cg, "conjugate", "proximal")))
+    cat(sprintf("Method: %s\n", x$method))
     cat(sprintf("Number of rows: %d\n", x$dimA))
     cat(sprintf("Number of columns: %d\n", x$dimB))
     cat(sprintf("Number of non-zero entries: %d\n", x$nnz))
     cat(sprintf("Dimensionality of factorization: %d\n", x$k))
     cat(sprintf("L1 regularization :%g - L2 regularization: %g\n", x$l1_reg, x$l2_reg))
-    cat(sprintf("Iterations: %d - upd. per iter: %d\n", x$niter, x$nupd))
+    cat(sprintf("Iterations: %d - max upd. per iter: %d\n", x$niter, x$maxupd))
     cat(sprintf("Initialization: %s", x$init_type))
     if (x$init_type != "custom") cat(sprintf(" - random seed: %d", x$seed))
     cat("\n")

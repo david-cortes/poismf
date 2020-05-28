@@ -7,11 +7,10 @@
 factors.single(
   model,
   X,
-  l2_reg = 1e+05,
-  l1_reg = 0,
-  weight_mult = 1,
-  nupd = 100,
-  limit_step = TRUE
+  l2_reg = model$l2_reg,
+  l1_reg = model$l1_reg,
+  weight_mult = model$weight_mult,
+  maxupd = model$maxupd
 )
 }
 \arguments{
@@ -24,20 +23,14 @@ as a `data.frame`, in which case will take the first column as the item/column i
 (numeration starting at 1) and the second column as the counts. If `X` passed to
 `poismf` was a `data.frame`, `X` here must also be a `data.frame`.}
 
-\item{l2_reg}{Strength of L2 regularization to use for optimizing the new factors. Note
-that these are obtained through a conjugate-gradient method instead of
-proximal gradient, which works better with smaller regularization values.}
+\item{l2_reg}{Strength of L2 regularization to use for optimizing the new factors.}
 
-\item{l1_reg}{Strength of the L1 regularization (see description of argument above).
-Not recommended.}
+\item{l1_reg}{Strength of the L1 regularization. Not recommended.}
 
 \item{weight_mult}{Weight multiplier for the positive entries over the missing entries.}
 
-\item{nupd}{Maximum number of conjugate gradient updates.}
-
-\item{limit_step}{Whether to limit the step sizes so as to drive at most 1 variable
-to zero after each update. See documentation of \link{poismf} for
-details.}
+\item{maxupd}{Maximum number of Newton-CG updates to perform. You might want to
+increase this value depending on the use-case.}
 }
 \value{
 Vector of dimensionality `model$k` with the latent factors for the user,
@@ -48,19 +41,11 @@ This is similar to obtaining topics for a document in LDA. See also
 function \link{factors} for getting factors for multiple users/rows at
 a time.
 
-This function works with one user at a time, and will use a
-conjugate gradient approach regardless of how the model was fit.
-As well, it will use the regularization parameter passed here instead of
-the original one from the model, which means the obtained factors might
-not end up being in the same scale as the original ones which are stored
-under `model$A`. See function \link{factors} for a different approach using
-the same method with which the model was fit.
-
-Be aware that the proximal gradient method, which is the default for fitting
-the model and which doesn't try to reach global optima, requires larger
-regularization, whereas the conjugate gradient method, which tries to find the
-global optimum, will fail to fit with too larger regularization (i.e. the
-optimal will be all-zeros).
+This function works with one user at a time, and will use the
+truncated Newton-CG approach regardless of how the model was fit.
+Note that, since this optimization method will likely have
+different optimal hyperparameters than the other methods, it
+offers the option of varying those hyperparameters in here.
 }
 \details{
 The factors are initialized to the mean of each column in the fitted model.

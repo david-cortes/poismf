@@ -7,12 +7,12 @@
 poismf(
   X,
   k = 50,
-  use_cg = TRUE,
-  limit_step = TRUE,
-  l2_reg = ifelse(use_cg, 1e+05, 1e+09),
+  method = "tncg",
+  l2_reg = "auto",
   l1_reg = 0,
-  niter = ifelse(use_cg, 20, 10),
-  nupd = ifelse(use_cg, 5, 1),
+  niter = "auto",
+  maxupd = "auto",
+  limit_step = TRUE,
   initial_step = 1e-07,
   weight_mult = 1,
   init_type = "gamma",
@@ -41,59 +41,60 @@ Will also accept them in CSR and CSC format, but will be converted along the way
 \item A full matrix (of class `base::matrix`) - this is not recommended though.
 }
 Passing sparse matrices is faster as it will not need to re-enumerate the rows and columns,
-but if passing a sparse matrix, it cannot have any row or column with all-zero values,
-otherwise the optimization procedure might fail.
 Full matrices will be converted to sparse.}
 
 \item{k}{Number of latent factors to use (dimensionality of the low-rank factorization).
-Note that since this model deals with non-negative latent factors only and the
-optimal number for every entry is a very small number (depending on sparsity
-and regularization), the optimal `k` is likely to be low, while passing large
-values (e.g. > 100) is likely to produce bad results. If passing large `k`,
-it's recommended to use `use_cg=TRUE`.}
+If `k` is small (e.g. `k=5`), it's recommended to use `method='pg'`.
+For large values, (e.g. `k=100`), it's recommended to use `method='tncg'`.
+For medium values (e.g. `k=50`), it's recommende to use either
+`method='tncg'` or `method='cg'`.}
 
-\item{use_cg}{Whether to fit the model through conjugate gradient method. This is slower,
-but less prone to failure, usually reaches better local optima, and is able
-to fit models with lower regularization values.}
+\item{method}{Optimization method to use. Options are: \itemize{
+\item `"tncg"` : will use a truncated Newton-CG method. This is the
+slowest option, but tends to find better local optima, and if run
+for many iterations, tends to produce sparse latent factor
+matrices.
+\item `"cg"` : will use a Conjugate Gradient method, which is faster
+than the truncated Newton-CG, but tends not to reach the best local
+optima. Usually, with this method and the default hyperparameters,
+the latent factor matrices will not be very sparse.
+\item `"pg"` : will use a proximal gradient method, which is a lot faster
+than the other two and more memory-efficient, but tends to only work
+with very large regularization values, and doesn't find as good
+local optima, nor tends to result in sparse factors.
+}}
 
-\item{limit_step}{When passing `use_cg=TRUE`, whether to limit the step sizes in each update
-so as to drive at most one variable to zero each time, as prescribed in [2].
-If running the procedure for many iterations, it's recommended to set this
-to `TRUE`. Generally, running the model for many more iterations with
-`use_cg=TRUE` and `limit_step=TRUE` tends to produce better results,
-but it's slower, and running for few iterations will usually lead to worse
-results compared to using `limit_step=FALSE`.}
-
-\item{l2_reg}{Strength of L2 regularization. Proximal gradient method will likely fail
-to fit when the regularization is too small, and the recommended value
-is 10^9. Recommended to decrease it when using conjugate gradient method
-to e.g. 10^5 or even zero.}
+\item{l2_reg}{Strength of L2 regularization. It is recommended to use small values
+along with `method='tncg'`, very large values along with `method='pg'`,
+and medium to large values with `method='cg'`. If passing `"auto"`,
+will set it to `10^3` for TNCG, `10^5` for CG, and `10^9` for PG.}
 
 \item{l1_reg}{Strength of L1 regularization. Not recommended.}
 
 \item{niter}{Number of alternating iterations to perform. One iteration denotes an update
-over both matrices.}
+over both matrices. If passing `'auto'`, will set it to 50 for TNCG,
+25 for CG, and 10 for PG.}
 
-\item{nupd}{\itemize{
-  \item When using proximal gradient, this is the number of proximal gradient
-  updates to perform to each vector per iteration. Increasing the number of
-  iterations instead of this has the same computational complexity and is
-  likely to produce better results.
-  \item When using conjugate gradient, this is the maximum number of updates
-  per iteration, and it's recommended to set it to a larger value such
-  as 5 or 10, while perhaps decreasing `niter` (for faster fitting),
-  as it will perform a line search in this case. Alternatively, might
-  instead set `nupd` to 1 (in which case it becomes gradient descent)
-  and `niter` to a large number such as 100. If using large `k`,
-  and/or l1 regularization, it's recommended to increase `nupd` due
-  to the way constraints are handled in the CG method (see
-  reference [2] for details) - e.g. if using `k=100`, set `nupd=25`,
-  and maybe also `niter=50` too.
-}}
+\item{maxupd}{Maximum number of updates to each user/item vector within an iteration.
+You might also want to try decreasing this while increasing `niter`.
+For `method='pg'`, this will be taken as the actual number of updates,
+as it does not perform a line search like the other methods.
+If passing `"auto"`, will set it to `5*k` for `method='tncg'`,
+25 for `method='cg'`, and 10 for `method='pg'`. If using
+`method='cg'`, you might also try instead setting `maxupd=1`
+and `niter=100`.}
 
-\item{initial_step}{Initial step size to use. Larger step sizes reach converge faster, but are
-more likely to result in failed optimization. Ignored for conjugate gradient
-as it uses a line search instead.}
+\item{limit_step}{When passing `method='cg'`, whether to limit the step sizes in each update
+so as to drive at most one variable to zero each time, as prescribed in [2].
+If running the procedure for many iterations, it's recommended to set this
+to 'True'. You also might set `method='cg'` plus `maxupd=1` and
+`limit_step=FALSE` to reduce the algorithm to simple gradient descent
+with a line search.}
+
+\item{initial_step}{Initial step size to use for proximal gradient updates. Larger step sizes
+reach converge faster, but are more likely to result in failed optimization.
+Ignored when passing `method='tncg'` or `method='cg'`, as those will
+perform a line seach instead.}
 
 \item{weight_mult}{Extra multiplier for the weight of the positive entries over the missing
 entries in the matrix to factorize. Be aware that Poisson likelihood will
@@ -114,26 +115,24 @@ them `~ Gamma(1, 1))` or `'unif'` (will initialize them `~ Unif(0, 1))`..}
 An object of class `poismf` with the following fields of interest:
 }
 \description{
-Creates a low-rank non-negative factorization of a sparse counts matrix by
-maximizing Poisson likelihood minus L1/L2 regularization, using gradient-based
-optimization procedures.
+Creates a low-rank non-negative factorization of a sparse counts
+matrix by maximizing Poisson likelihood minus L1/L2 regularization, using
+gradient-based optimization procedures.
 
 Ideal for usage in recommender systems, in which the `X` matrix would consist of
 interactions (e.g. clicks, views, plays), with users representing the rows and items
 representing the columns.
+}
+\details{
+In order to obtain sparse latent factor matrices, you need to pass
+`method='tncg'` and a large `niter`, such as `niter=50` or `niter=100`.
+The L1 regularization approach is not recommended, even though it might
+also produce relatively sparse results with the other optimization methods.
 
-Be aware that this model is prone to numerical instability when using proximal gradient, and can
-turn out to spit all NaNs or zeros in the fitted parameters. As an alternative, can use
-a conjugate gradient approach instead, which is slower but
-not susceptible to such failures.
-
-The default hyperparameters are geared towards very fast fitting times, and
-might not be very competitive against other implicit-feedback methods when
-used as-is. It's also possible to obtain better quality models that compare
-very favorably against e.g. implicit-ALS/HPF/BPR/etc. by using a much larger
-number of iterations and updates, lower regularization, and the conjugate gradient
-option - this will take many times longer than with the default hyperparameters,
-but usually it's still faster than other factorization models.
+When using proximal gradient method, this model is prone to numerical
+instability, and can turn out to spit all NaNs or zeros in the fitted
+parameters. The conjugate gradient and Newton-CG methods are not prone to
+such failed optimizations.
 }
 \section{Fields}{
 
@@ -170,22 +169,27 @@ X <- X[!duplicated(X[, c("row_ix", "col_ix")]), ]
 
 ### can also pass X as sparse matrix - see below
 ### X <- Matrix::sparseMatrix(
-###         i=X$row_ix, j=X$col_ix, x=X$count,
-###         giveCsparse=FALSE)
+###          i=X$row_ix, j=X$col_ix, x=X$count,
+###          giveCsparse=FALSE)
 ### the indices can also be characters or other types:
 ### X$row_ix <- paste0("user", X$row_ix)
 ### X$col_ix <- paste0("item", X$col_ix)
 
 ### factorize the randomly-generated sparse matrix
 ### good speed (proximal gradient)
-model <- poismf(X, use_cg=FALSE, nthreads=1)
+model <- poismf(X, k=5, method="pg", nthreads=1)
 
 ### good quality, but slower (conjugate gradient)
-model <- poismf(X, use_cg=TRUE, nthreads=1)
+model <- poismf(X, k=5, method="cg", nthreads=1)
 
-### good quality, but much slower (gradient descent)
-model <- poismf(X, use_cg=TRUE, limit_step=FALSE,
-            niter=100, nupd=1, nthreads=1)
+### better quality, but much slower (truncated Newton-CG)
+model <- poismf(X, k=5, method="tncg", nthreads=1)
+
+### for getting sparse factors
+\donttest{
+model <- poismf(X, k=50, method="tncg")
+mean(model$A == 0.)
+}
 
 ### predict functionality (chosen entries in X)
 ### predict entry [1, 10] (row 1, column 10)
@@ -215,6 +219,9 @@ arXiv preprint arXiv:1811.01908 (2018).
 \item Li, Can.
 "A conjugate gradient type method for the nonnegative constraints optimization problems."
 Journal of Applied Mathematics 2013 (2013).
+\item Carlsson, Christer, et al.
+"User's guide for TN/TNBC: Fortran routines for nonlinear optimization."
+Mathematical Sciences Dept. Tech. Rep. 307, The Johns Hopkins University. 1984.
 }
 }
 \seealso{

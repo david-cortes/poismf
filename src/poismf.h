@@ -65,6 +65,7 @@ extern "C" {
 #include <string.h>
 #include <stddef.h>
 #include <signal.h>
+#include <limits.h>
 #ifdef _OPENMP
     #include <omp.h>
 #else
@@ -78,7 +79,7 @@ extern "C" {
     #include <R.h>
     #include <R_ext/Rdynload.h>
     #include <R_ext/Print.h>
-    #define fprintf(f, message) REprintf(message)
+    #define fprintf(f, ...) REprintf(__VA_ARGS__)
     #define sparse_ix int
 #endif
 
@@ -93,14 +94,18 @@ int minimize_nonneg_cg(double x[], int n, double *fun_val,
                        bool limit_step, double *buffer_arr, int nthreads, int verbose);
 /* Data struct to pass to nonneg_cg */
 typedef struct fdata {
-    double *F;
-    double *Fsum;
-    double *X;
+    double *B;
+    double *Bsum;
+    double *Xr;
     sparse_ix *X_ind;
     sparse_ix nnz_this;
     double l2_reg;
     double w_mult;
+    int k;
 } fdata;
+
+/* TNC */
+#include "tnc.h"
 
 /* BLAS functions */
 
@@ -115,6 +120,7 @@ typedef struct fdata {
     double cblas_ddot(const int n, const double *x, const int incx, const double *y, const int incy);
     void cblas_daxpy(const int n, const double alpha, const double *x, const int incx, double *y, const int incy);
     void cblas_dscal(const int N, const double alpha, double *X, const int incX);
+    double cblas_dnrm2(const int n, const double *x, const int incx);
     void cblas_dgemv(const CBLAS_ORDER order,  const CBLAS_TRANSPOSE TransA,  const int m, const int n,
          const double alpha, const double  *a, const int lda,  const double  *x, const int incx,  const double beta,  double  *y, const int incy);
     #endif
@@ -136,6 +142,7 @@ typedef struct fdata {
 /* Function prototypes */
 
 /* poismf.c */
+void dscal_large(size_t n, double alpha, double *restrict x);
 void sum_by_cols(double *restrict out, double *restrict M, size_t nrow, size_t ncol);
 void adjustment_Bsum
 (
@@ -153,29 +160,48 @@ void pg_iteration
     double *A, double *B,
     double *Xr, sparse_ix *Xr_indptr, sparse_ix *Xr_indices,
     size_t dimA, size_t k,
-    double cnst_div, double *cnst_sum,
-    double step_size, double w_mult, size_t npass,
+    double cnst_div, double *cnst_sum, double *Bsum_user,
+    double step_size, double w_mult, size_t maxupd,
     double *buffer_arr, int nthreads
 );
-void calc_fun_single(double x[], int n, double *f, void *data);
-void calc_grad_single(double x[], int n, double grad[], void *data);
+void calc_fun_single(double a_row[], int k_int, double *f, void *data);
+void calc_grad_single(double a_row[], int k_int, double grad[], void *data);
+void calc_grad_single_w(double a_row[], int k_int, double grad[], void *data);
+int calc_fun_and_grad
+(
+    double *restrict a_row,
+    double *restrict f,
+    double *restrict grad,
+    void *data
+);
 void cg_iteration
 (
     double *A, double *B,
     double *Xr, sparse_ix *Xr_indptr, sparse_ix *Xr_indices,
     size_t dimA, size_t k, bool limit_step,
-    double *Bsum, double l2_reg, double w_mult, size_t npass,
+    double *Bsum, double l2_reg, double w_mult, size_t maxupd,
     double *buffer_arr, double *Bsum_w, int nthreads
+);
+void tncg_iteration
+(
+    double *A, double *B,
+    double *Xr, sparse_ix *Xr_indptr, sparse_ix *Xr_indices,
+    size_t dimA, size_t k,
+    double *Bsum, double l2_reg, double w_mult, int maxupd,
+    double *buffer_arr, int *buffer_int,
+    double *zeros_tncg, double *inf_tncg,
+    double *Bsum_w, int nthreads
 );
 void set_interrup_global_variable(int s);
 
 /* main function */
+typedef enum Method {tncg = 1, cg = 2, pg = 3} Method;
 int run_poismf(
     double *restrict A, double *restrict Xr, sparse_ix *restrict Xr_indptr, sparse_ix *restrict Xr_indices,
     double *restrict B, double *restrict Xc, sparse_ix *restrict Xc_indptr, sparse_ix *restrict Xc_indices,
     const size_t dimA, const size_t dimB, const size_t k,
     const double l2_reg, const double l1_reg, const double w_mult, double step_size,
-    const bool use_cg, const bool limit_step, const size_t numiter, const size_t npass,
+    const Method method, const bool limit_step, const size_t numiter, const size_t maxupd,
     const int nthreads);
 
 /* topN.c */
@@ -219,8 +245,8 @@ int factors_multiple
     double *Xr, sparse_ix *Xr_indptr, sparse_ix *Xr_indices,
     int k, size_t dimA,
     double l2_reg, double w_mult,
-    double step_size, size_t niter, size_t npass,
-    bool use_cg, bool limit_step,
+    double step_size, size_t niter, size_t maxupd,
+    Method method, bool limit_step,
     int nthreads
 );
 int factors_single
@@ -229,8 +255,8 @@ int factors_single
     double *restrict A_old, size_t dimA,
     double *restrict X, sparse_ix X_ind[], size_t nnz,
     double *restrict B, double *restrict Bsum,
-    size_t npass, double l2_reg, double l1_new, double l1_old,
-    double w_mult, bool limit_step
+    int maxupd, double l2_reg, double l1_new, double l1_old,
+    double w_mult
 );
 
 #ifdef __cplusplus

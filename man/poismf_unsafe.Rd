@@ -17,7 +17,7 @@ hence the shape [k, dimA]. Recommended to initialize `~ Gamma(1,1)`.
 \item{B}{Initial values for the item-factor matrix of dimensions [dimB, k]. See
 documentation about `A` for more details.}
 
-\item{Xcsr}{The transpose of the `X` matrix in CSC format (so that its structure
+\item{Xcsr}{The \bold{transpose} of the `X` matrix in CSC format (so that its structure
 would match a CSR matrix). Should be an object of class `Matrix::dgCMatrix`.}
 
 \item{Xcsc}{The `X` matrix in CSC format. Should be an object of class `Matrix::dgCMatrix`.}
@@ -40,6 +40,39 @@ or conversions, passing the wrong kinds of inputs or passing inputs with mismatc
 dimensions will crash the R process}.
 
 For most use cases, it's recommended to use the function `poismf` instead.
+}
+\examples{
+library(poismf)
+
+### create a random sparse data frame in COO format
+nrow <- 10^2 ## <- users
+ncol <- 10^3 ## <- items
+nnz  <- 10^4 ## <- events (agg)
+set.seed(1)
+X <- data.frame(
+        row_ix = sample(nrow, size=nnz, replace=TRUE),
+        col_ix = sample(ncol, size=nnz, replace=TRUE),
+        count  = rpois(nnz, 1) + 1
+     )
+X <- X[!duplicated(X[, c("row_ix", "col_ix")]), ]
+
+### convert to required format
+Xcsr <- Matrix::sparseMatrix(
+            i=X$col_ix, j=X$row_ix, x=X$count,
+            giveCsparse=TRUE
+)
+Xcsc <- Matrix::sparseMatrix(
+            i=X$row_ix, j=X$col_ix, x=X$count,
+            giveCsparse=TRUE
+)
+
+### initialize factor matrices
+k <- 5L
+A <- rgamma(nrow*k, 1, 1)
+B <- rgamma(ncol*k, 1, 1)
+
+### call function
+model <- poismf_unsafe(A, B, Xcsr, Xcsc, k)
 }
 \seealso{
 \link{poismf}

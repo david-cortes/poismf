@@ -125,7 +125,7 @@ int topN
     if (n_exclude > n-n_top) return 2;
     if (n_include > n) return 2;
 
-    #if (_OPENMP < 200801) || defined(_WIN32) || defined(_WIN64)
+    #if defined(_OPENMP) && ((_OPENMP < 200801) || defined(_WIN32) || defined(_WIN64))
     long long ix = 0;
     #else
     size_t ix = 0;

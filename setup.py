@@ -22,6 +22,9 @@ class build_ext_subclass( build_ext_with_blas ):
             for e in self.extensions:
                 e.extra_compile_args += ['-O2', '-fopenmp', '-march=native', '-std=c99']
                 e.extra_link_args += ['-fopenmp']
+                # e.extra_compile_args += ["-fsanitize=address", "-static-libasan", "-ggdb"]
+                # e.extra_link_args += ["-fsanitize=address", "-static-libasan"]
+                # e.extra_compile_args += ["-ggdb"]
         build_ext_with_blas.build_extensions(self)
 
 
@@ -31,7 +34,7 @@ setup(
     author = 'David Cortes',
     author_email = 'david.cortes.rivera@gmail.com',
     url = 'https://github.com/david-cortes/poismf',
-    version = '0.2.1',
+    version = '0.2.2',
     install_requires = ['numpy', 'pandas>=0.24', 'cython', 'findblas'],
     description = 'Fast and memory-efficient Poisson factorization for sparse count matrices',
     cmdclass = {'build_ext': build_ext_subclass},
@@ -39,7 +42,7 @@ setup(
         Extension("poismf.poismf_c_wrapper",
             sources=["poismf/poismf_c_wrapper.pyx",
                      "src/poismf.c", "src/topN.c", "src/pred.c",
-                     "src/nonnegcg.c"],
-            include_dirs=[numpy.get_include()], define_macros = [("_FOR_PYTHON", None)]
+                     "src/nonnegcg.c", "src/tnc.c"],
+            include_dirs=[numpy.get_include(), "src/"], define_macros = [("_FOR_PYTHON", None)]
         )]
     )

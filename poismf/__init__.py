@@ -12,83 +12,85 @@ class PoisMF:
     Fast and memory-efficient model for recommender systems based on Poisson
     factorization of sparse counts data (e.g. number of times a user played different
     songs), using gradient-based optimization procedures.
-    
-    If passing reindex=True, it will internally reindex all user and item IDs. Your data will not require
-    reindexing if the IDs for users and items meet the following criteria:
 
+    Note
+    ----
+    In order to obtain sparse latent factor matrices, you need to pass
+    ``method='tncg'`` and a large ``niter``, such as ``niter=50`` or ``niter=100``.
+    The L1 regularization approach is not recommended, even though it might
+    also produce relatively sparse results with the other optimization methods.
+
+    Note
+    ----
+    If passing ``reindex=True``, it will internally reindex all user and item IDs.
+    Your data will not require reindexing if the IDs for users and items meet
+    the following criteria:
         1) Are all integers.
         2) Start at zero.
-        3) Don't have any enumeration gaps, i.e. if there is a user '4', user '3' must also be there.
+        3) Don't have any enumeration gaps, i.e. if there is a user '4',
+           user '3' must also be there.
 
     Note
     ----
-    This model is prone to numerical instability when using proximal gradient, and can
-    turn out to spit all NaNs or zeros in the fitted parameters. As an alternative, can
-    use a conjugate gradient approach instead, which is slower but
-    not susceptible to such failures.
-
-    Note
-    ----
-    The default hyperparameters are geared towards very fast fitting times, and
-    might not be very competitive against other implicit-feedback methods when
-    used as-is. It's also possible to obtain better quality models that compare
-    very favorably against e.g. implicit-ALS/HPF/BPR/etc. by using a much larger
-    number of iterations and updates, lower regularization, and the conjugate gradient
-    option - this will take many times longer than with the default hyperparameters,
-    but usually it's still faster than other factorization models.
+    When using proximal gradient method, this model is prone to numerical
+    instability, and can turn out to spit all NaNs or zeros in the fitted
+    parameters. The conjugate gradient and Newton-CG methods are not prone to
+    such failed optimizations.
 
     Parameters
     ----------
     k : int
         Number of latent factors to use (dimensionality of the low-rank factorization).
-        Note that since this model deals with non-negative latent factors only and the
-        optimal number for every entry is a very small number (depending on sparsity
-        and regularization), the optimal ``k`` is likely to be low, while passing large
-        values (e.g. > 100) is likely to produce bad results. If passing large ``k``,
-        it's recommended to use ``use_cg=True``.
-    use_cg : bool
-        Whether to fit the model through conjugate gradient method. This is slower,
-        but less prone to failure, usually reaches better local optima, and is able
-        to fit models with lower regularization values.
-    limit_step : bool
-        When passing ``use_cg=True``, whether to limit the step sizes in each update
-        so as to drive at most one variable to zero each time, as prescribed in [2].
-        If running the procedure for many iterations, it's recommended to set this
-        to 'True'. Generally, running the model for many more iterations with
-        ``use_cg=True`` and ``limit_step=True`` tends to produce better results,
-        but it's slower, and running for few iterations will usually lead to worse
-        results compared to using ``limit_step=False``.
+        If ``k`` is small (e.g. ``k=5``), it's recommended to use ``method='pg'``.
+        For large values, (e.g. ``k=100``), it's recommended to use ``method='tncg'``.
+        For medium values (e.g. ``k=50``), it's recommende to use either
+        ``method='tncg'`` or ``method='cg'``.
+    method : bool
+        Optimization method to use. Options are:
+            * ``"tncg"`` : will use a truncated Newton-CG method. This is the
+              slowest option, but tends to find better local optima, and if run
+              for many iterations, tends to produce sparse latent factor
+              matrices.
+            * ``"cg"`` : will use a Conjugate Gradient method, which is faster
+              than the truncated Newton-CG, but tends not to reach the best local
+              optima. Usually, with this method and the default hyperparameters,
+              the latent factor matrices will not be very sparse.
+            * ``"pg"`` : will use a proximal gradient method, which is a lot faster
+              than the other two and more memory-efficient, but tends to only work
+              with very large regularization values, and doesn't find as good
+              local optima, nor tends to result in sparse factors.
     l2_reg : float
-        Strength of L2 regularization. Proximal gradient method will likely fail
-        to fit when the regularization is too small, and the recommended value
-        is 10^9. Recommended to decrease it when using conjugate gradient method
-        to e.g. 10^5 or even zero. If passing "auto", will set it to 10^9 for
-        proximal gradient, and 10^5 for conjugate gradient.
+        Strength of L2 regularization. It is recommended to use small values
+        along with ``method='tncg'``, very large values along with ``method='pg'``,
+        and medium to large values with ``method='cg'``. If passing ``"auto"``,
+        will set it to 10^3 for TNCG, 10^5 for CG, and 10^9 for PG.
     l1_reg : float
         Strength of L1 regularization. Not recommended.
     niter : int
         Number of alternating iterations to perform. One iteration denotes an update
-        over both matrices. If passing ``'auto'``, will set it to 10 for proximal
-        gradient, and 20 for conjugate gradient.
-    nupd : int
-            * When using proximal gradient, this is the number of proximal gradient
-              updates to perform to each vector per iteration. Increasing the number of
-              iterations instead of this has the same computational complexity and is
-              likely to produce better results.
-            * When using conjugate gradient, this is the maximum number of updates
-              per iteration, and it's recommended to set it to a larger value such
-              as 5 or 10, while perhaps decreasing ``niter`` (for faster fitting),
-              as it will perform a line search in this case. Alternatively, might
-              instead set ``nupd`` to 1 (in which case it becomes gradient descent)
-              and ``niter`` to a large number such as 100. If using large ``k``
-              and/or l1 regularization, it's recommended to increase ``nupd`` due
-              to the way constraints are handled in the CG method (see
-              reference [2] for details) - e.g. if using ``k=100``, set ``nupd=25``,
-              and maybe also ``niter=50`` too.
+        over both matrices. If passing ``'auto'``, will set it to 50 for TNCG,
+        25 for CG, and 10 for PG.
+    maxupd : int
+        Maximum number of updates to each user/item vector within an iteration.
+        You might also want to try decreasing this while increasing ``niter``.
+        For ``method='pg'``, this will be taken as the actual number of updates,
+        as it does not perform a line search like the other methods.
+        If passing ``"auto"``, will set it to ``5*k`` for ``method='tncg'``,
+        25 for ``method='cg'``, and 10 for ``method='pg'``. If using
+        ``method='cg'``, you might also try instead setting ``maxupd=1``
+        and ``niter=100``.
+    limit_step : bool
+        When passing ``method='cg'``, whether to limit the step sizes in each update
+        so as to drive at most one variable to zero each time, as prescribed in [2].
+        If running the procedure for many iterations, it's recommended to set this
+        to 'True'. You also might set ``method='cg'`` plus ``maxupd=1`` and
+        ``limit_step=False`` to reduce the algorithm to simple gradient descent
+        with a line search.
     initial_step : float
-        Initial step size to use. Larger step sizes reach converge faster, but are
-        more likely to result in failed optimization. Ignored for conjugate gradient
-        as it uses a line search instead.
+        Initial step size to use for proximal gradient updates. Larger step sizes
+        reach converge faster, but are more likely to result in failed optimization.
+        Ignored when passing ``method='tncg'`` or ``method='cg'``, as those will
+        perform a line seach instead.
     weight_mult : float > 0
         Extra multiplier for the weight of the positive entries over the missing
         entries in the matrix to factorize. Be aware that Poisson likelihood will
@@ -146,28 +148,38 @@ class PoisMF:
     .. [2] Li, Can.
            "A conjugate gradient type method for the nonnegative constraints optimization problems."
            Journal of Applied Mathematics 2013 (2013).
+    .. [3] Carlsson, Christer, et al.
+           "User's guide for TN/TNBC: Fortran routines for nonlinear optimization."
+           Mathematical Sciences Dept. Tech. Rep. 307, The Johns Hopkins University. 1984.
     """
-    def __init__(self, k = 50, use_cg = True, limit_step = True,
+    def __init__(self, k = 50, method = "tncg",
                  l2_reg = "auto", l1_reg = 0.0,
-                 niter = "auto", nupd = "auto", initial_step = 1e-7,
+                 niter = "auto", maxupd = "auto",
+                 limit_step = True, initial_step = 1e-7,
                  weight_mult = 1.0, init_type = "gamma", random_state = 1,
                  reindex = True, copy_data = True, produce_dicts = False,
                  nthreads = -1):
+        assert method in ["tncg", "cg", "pg"]
+        if (isinstance(k, float) or
+            isinstance(k, np.float32) or
+            isinstance(k, np.float64)):
+            k = int(k)
+
         ## default hyperparameters
         if l2_reg == "auto":
-            l2_reg = 1e5 if use_cg else 1e9
-        if nupd == "auto":
-            nupd = 5 if use_cg else 1
+            l2_reg = {"tncg":1e3, "cg":1e5, "pg":1e9}[method]
+        if maxupd == "auto":
+            maxupd = {"tncg":5*k, "cg":5, "pg":10}[method]
         if niter == "auto":
-            niter = 20 if use_cg else 10
+            niter = {"tncg":50, "cg":25, "pg":10}[method]
 
         ## checking inputs
         assert k > 0
         assert isinstance(k, int) or isinstance(k, np.int64)
         assert niter >= 1
-        assert nupd >= 1
+        assert maxupd >= 1
         assert isinstance(niter, int) or isinstance(niter, np.int64)
-        assert isinstance(nupd, int) or isinstance(nupd, np.int64)
+        assert isinstance(maxupd, int) or isinstance(maxupd, np.int64)
         assert l2_reg >= 0.
         assert l1_reg >= 0.
         assert initial_step > 0.
@@ -199,8 +211,8 @@ class PoisMF:
         self.weight_mult = float(weight_mult)
         self.init_type = init_type
         self.niter = niter
-        self.nupd = nupd
-        self.use_cg = bool(use_cg)
+        self.maxupd = maxupd
+        self.method = method
         self.limit_step = bool(limit_step)
         self.nthreads = nthreads
 
@@ -314,9 +326,9 @@ class PoisMF:
             csr.data, csr.indices, csr.indptr,
             csc.data, csc.indices, csc.indptr,
             self.A, self.B,
-            self.use_cg, self.limit_step,
+            self.method, self.limit_step,
             self.l2_reg, self.l1_reg, self.weight_mult,
-            self.initial_step, self.niter, self.nupd, self.nthreads)
+            self.initial_step, self.niter, self.maxupd, self.nthreads)
         self.Bsum = self.B.sum(axis = 0).astype(ctypes.c_double) + self.l1_reg
 
     def fit_unsafe(self, A, B, Xcsr, Xcsc):
@@ -379,8 +391,8 @@ class PoisMF:
             self.user_dict_ = {self.user_mapping_[i]:i for i in range(self.user_mapping_.shape[0])}
             self.item_dict_ = {self.item_mapping_[i]:i for i in range(self.item_mapping_.shape[0])}
 
-    def predict_factors(self, X, l2_reg=1e5, l1_reg=0., weight_mult=1.,
-                        nupd=100, limit_step=True):
+    def predict_factors(self, X, l2_reg=None, l1_reg=None, weight_mult=None,
+                        maxupd=None):
         """
         Get latent factors for a new user given her item counts
 
@@ -390,21 +402,11 @@ class PoisMF:
 
         Note
         ----
-        This function works with one user at a time, and will use a
-        conjugate gradient approach regardless of how the model was fit.
-        As well, it will use the regularization parameter passed here instead of
-        the original one from the model, which means the obtained factors might
-        not end up being in the same scale as the original ones which are stored
-        under 'self.A'. See function 'transform' for a different approach using
-        the same method with which the model was fit.
-
-        Note
-        ----
-        Be aware that the proximal gradient method, which is the default for fitting
-        the model and which doesn't try to reach global optima, requires larger
-        regularization, whereas the conjugate gradient method, which tries to find the
-        global optimum, will fail to fit with too larger regularization (i.e. the
-        optimal will be all-zeros).
+        This function works with one user at a time, and will use the
+        truncated Newton-CG approach regardless of how the model was fit.
+        Note that, since this optimization method will likely have
+        different optimal hyperparameters than the other methods, it
+        offers the option of varying those hyperparameters in here.
 
         Note
         ----
@@ -413,40 +415,48 @@ class PoisMF:
         Parameters
         ----------
         X : DataFrame or tuple(2)
-            Either a DataFrame with columns 'ItemId' and 'Count', indicating the non-zero item counts for a user for whom it's desired to obtain latent
-            factors, or a tuple with the first entry being the items/columns that
-            have a non-zero count, and the second entry being the actual counts.
+            Either a DataFrame with columns 'ItemId' and 'Count', indicating the
+            non-zero item counts for a user for whom it's desired to obtain
+            latent factors, or a tuple with the first entry being the
+            items/columns that have a non-zero count, and the second entry being
+            the actual counts.
         l2_reg : float
-            Strength of L2 regularization to use for optimizing the new factors. Note
-            that these are obtained through a conjugate-gradient method instead of
-            proximal gradient, which works better with smaller regularization values.
+            Strength of L2 regularization to use for optimizing the new factors.
+            If passing ``None``, will take the value set in the model object.
         l1_reg : float
-            Strength of the L1 regularization (see description of argument above).
-            Not recommended.
+            Strength of the L1 regularization. Not recommended.
+            If passing ``None``, will take the value set in the model object.
         weight_mult : float
             Weight multiplier for the positive entries over the missing entries.
-        nupd : int > 0
-            Maximum number of conjugate gradient updates.
-        limit_step : bool
-            Whether to limit the step sizes so as to drive at most 1 variable
-            to zero after each update. See documentation of ``PoisMF`` for
-            details.
+            If passing ``None``, will take the value set in the model object.
+        maxupd : int > 0
+            Maximum number of Newton-CG updates to perform. You might want to
+            increase this value depending on the use-case.
+            If passing ``None``, will take the value set in the model object.
 
         Returns
         -------
         latent_factors : array (k,)
             Calculated latent factors for the user, given the input data
         """
+        if l2_reg is None:
+            l2_reg = self.l2_reg
+        if l1_reg is None:
+            l1_reg = self.l1_reg
+        if weight_mult is None:
+            weight_mult = self.weight_mult
+        if maxupd is None:
+            maxupd = self.maxupd
+
         assert weight_mult > 0.
         ix, cnt = self._process_data_single(X)
         l2_reg, l1_reg = self._process_reg_params(l2_reg, l1_reg)
         a_vec = _predict_factors(self.A, cnt, ix,
                                  self.B, self.Bsum,
-                                 int(nupd),
+                                 int(maxupd),
                                  float(l2_reg),
                                  float(l1_reg), float(self.l1_reg),
-                                 float(weight_mult),
-                                 bool(limit_step))
+                                 float(weight_mult))
         if np.any(np.isnan(a_vec)):
             raise ValueError("NaNs encountered in the result. Failed to produce latent factors.")
         if np.max(a_vec) <= 0:
@@ -557,8 +567,8 @@ class PoisMF:
             self.weight_mult,
             self.initial_step,
             self.niter,
-            self.nupd,
-            self.use_cg,
+            self.maxupd,
+            self.method,
             self.limit_step,
             self.nthreads
         )
@@ -854,7 +864,7 @@ class PoisMF:
 
     def topN_new(self, X, n=10, include=None, exclude=None, output_score=False,
                  l2_reg = 1e5, l1_reg = 0., weight_mult=1.,
-                 nupd = 100, limit_step=True):
+                 maxupd = 100):
         """
         Rank top-N highest-predicted items for a new user
 
@@ -871,7 +881,8 @@ class PoisMF:
         Parameters
         ----------
         X : DataFrame or tuple(2)
-            Either a DataFrame with columns 'ItemId' and 'Count', indicating the non-zero item counts for a user for whom it's desired to obtain latent
+            Either a DataFrame with columns 'ItemId' and 'Count', indicating the
+            non-zero item counts for a user for whom it's desired to obtain latent
             factors, or a tuple with the first entry being the items/columns that
             have a non-zero count, and the second entry being the actual counts.
         n : int
@@ -893,19 +904,18 @@ class PoisMF:
             'False', will return a single array with the item IDs, otherwise
             will return a tuple with the item IDs and the scores.
         l2_reg : float
-            Strength of L2 regularization to use for optimizing the new factors. Note
-            that these are obtained through a conjugate-gradient method instrad of
-            proximal-gradient, which works better with smaller regularization values.
+            Strength of L2 regularization to use for optimizing the new factors.
+            If passing ``None``, will take the value set in the model object.
         l1_reg : float
-            Strength of the L1 regularization (see description of argument above).
+            Strength of the L1 regularization. Not recommended.
+            If passing ``None``, will take the value set in the model object.
         weight_mult : float
             Weight multiplier for the positive entries over the missing entries.
-        nupd : int
-            Maximum number of conjugate gradient updates.
-        limit_step : bool
-            Whether to limit the step sizes so as to drive at most 1 variable
-            to zero after each update. See documentation of ``PoisMF`` for
-            details.
+            If passing ``None``, will take the value set in the model object.
+        maxupd : int > 0
+            Maximum number of Newton-CG updates to perform. You might want to
+            increase this value depending on the use-case.
+            If passing ``None``, will take the value set in the model object.
 
         Returns
         -------
@@ -919,8 +929,7 @@ class PoisMF:
             be a tuple with these two entries.
         """
         a_vec = self.predict_factors(X, l2_reg=l2_reg, l1_reg=l1_reg,
-                                     weight_mult=weight_mult, nupd=nupd,
-                                     limit_step=limit_step)
+                                     weight_mult=weight_mult, maxupd=maxupd)
         include, exclude = self._process_include_exclude(include, exclude)
         if include.shape[0]:
             if n < include.shape[0]:

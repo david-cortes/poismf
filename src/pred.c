@@ -49,9 +49,9 @@ void predict_multiple
 )
 {
     #if defined(_OPENMP) && ((_OPENMP < 200801) || defined(_WIN32) || defined(_WIN64))
-    long long ix;
+    long long ix = 0;
     #else
-    size_t ix;
+    size_t ix = 0;
     #endif
 
     size_t k_szt = (size_t) k;
@@ -77,9 +77,9 @@ long double eval_llk
 )
 {
     #if defined(_OPENMP) && ((_OPENMP < 200801) || defined(_WIN32) || defined(_WIN64))
-    long long ix;
+    long long ix = 0;
     #else
-    size_t ix;
+    size_t ix = 0;
     #endif
     double pred;
     size_t k_szt = (size_t)k;
@@ -142,23 +142,34 @@ int factors_multiple
     double *Xr, sparse_ix *Xr_indptr, sparse_ix *Xr_indices,
     int k, size_t dimA,
     double l2_reg, double w_mult,
-    double step_size, size_t niter, size_t npass,
-    bool use_cg, bool limit_step,
+    double step_size, size_t niter, size_t maxupd,
+    Method method, bool limit_step,
     int nthreads
 )
 {
     /* Note: Bsum should already have the l1 regularization added to it */
     #if defined(_OPENMP) && ((_OPENMP < 200801) || defined(_WIN32) || defined(_WIN64))
-    long long ix;
+    long long ix = 0;
     #else
-    size_t ix;
+    size_t ix = 0;
     #endif
 
     size_t k_szt = (size_t) k;
     double cnst_div;
     double *Bsum_w = NULL;
-    double *buffer_arr = (double*) malloc(k_szt * sizeof(double) * (size_t)nthreads
-                                          * (use_cg? 5 : 1));
+    double *Bsum_w_scaled = NULL;
+    double *Bsum_scaled = NULL;
+    size_t size_buffer = 1;
+    switch(method) {
+        case pg:   {size_buffer = 1;  break;}
+        case cg:   {size_buffer = 5;  break;}
+        case tncg: {size_buffer = 22; break;}
+    }
+    size_buffer *= (k_szt * (size_t)nthreads);
+    double *buffer_arr = (double*) malloc(sizeof(double) * size_buffer);
+    int *buffer_int = NULL;
+    double *zeros_tncg = NULL;
+    double *inf_tncg = NULL;
 
     int return_val = 0;
 
@@ -169,12 +180,36 @@ int factors_multiple
             goto cleanup;
     }
 
+    if (method == pg) {
+        if (w_mult == 1.) {
+            Bsum_scaled = (double*)malloc(sizeof(double) * k_szt);
+            if (Bsum_scaled == NULL) goto throw_oom;
+        }
+
+        else {
+            Bsum_w_scaled = (double*)malloc(sizeof(double) * k_szt * dimA);
+            if (Bsum_w_scaled == NULL) goto throw_oom;
+        }
+    }
+
     if (w_mult != 1.) {
-        Bsum_w = (double*)malloc(sizeof(double) * k * dimA);
+        Bsum_w = (double*)malloc(sizeof(double) * k_szt * dimA);
         if (Bsum_w == NULL) goto throw_oom;
         adjustment_Bsum(B, Bsum, Bsum_w,
                         Xr_indices, Xr_indptr,
                         dimA, k, w_mult, nthreads);
+        if (method == pg)
+            dscal_large(dimA*k_szt, -step_size, Bsum_w);
+    }
+
+    if (method == tncg) {
+        buffer_int = (int*)malloc(sizeof(int) * k_szt * (size_t)nthreads);
+        zeros_tncg = (double*)calloc(sizeof(double), k_szt);
+        inf_tncg = (double*)malloc(sizeof(double) * k_szt);
+        if (buffer_int == NULL || zeros_tncg == NULL || inf_tncg == NULL)
+            goto throw_oom;
+        for (size_t ix = 0; ix < k_szt; ix++)
+            inf_tncg[ix] = HUGE_VAL;
     }
 
     /* Initialize all values to the mean of old A */
@@ -185,29 +220,54 @@ int factors_multiple
     for (ix = 1; ix < dimA; ix++)
         memcpy(A + (size_t)ix*k_szt, A, k_szt*sizeof(double));
 
-    if (use_cg)
-    {
-        cg_iteration(A, B, Xr, Xr_indptr, Xr_indices,
-                     dimA, k_szt, limit_step,
-                     Bsum, l2_reg, w_mult, npass * niter,
-                     buffer_arr, Bsum_w, nthreads);
-    }
-
-    else
-    {
-        for (size_t iter = 0; iter < niter; iter++)
+    switch(method) {
+        case pg:
         {
-            cnst_div = 1. / (1. + 2. * l2_reg * step_size);
-            pg_iteration(A, B, Xr, Xr_indptr, Xr_indices,
-                         dimA, k, cnst_div, Bsum, step_size,
-                         w_mult, npass, buffer_arr, nthreads);
-            step_size *= 0.5;
+            for (size_t iter = 0; iter < niter; iter++)
+            {
+                if (w_mult == 1.) {
+                    memcpy(Bsum_scaled, Bsum, sizeof(double) * k_szt);
+                    cblas_dscal(k, -step_size, Bsum_scaled, 1);
+                }
+                else {
+                    memcpy(Bsum_w_scaled, Bsum_w, sizeof(double) * k_szt * dimA);
+                    dscal_large(dimA*k_szt, -step_size, Bsum_w_scaled);
+                }
+                cnst_div = 1. / (1. + 2. * l2_reg * step_size);
+                pg_iteration(A, B, Xr, Xr_indptr, Xr_indices,
+                             dimA, k, cnst_div, Bsum_scaled, Bsum_w_scaled,
+                             step_size, w_mult, maxupd, buffer_arr, nthreads);
+                step_size *= 0.5;
+            }
+            break;
+        }
+
+        case cg:
+        {
+            cg_iteration(A, B, Xr, Xr_indptr, Xr_indices,
+                         dimA, k_szt, limit_step,
+                         Bsum, l2_reg, w_mult, maxupd * niter,
+                         buffer_arr, Bsum_w, nthreads);
+            break;
+        }
+
+        case tncg:
+        {
+            tncg_iteration(A, B, Xr, Xr_indptr, Xr_indices,
+                           dimA, k_szt, Bsum, l2_reg, w_mult, maxupd,
+                           buffer_arr, buffer_int,
+                           zeros_tncg, inf_tncg,
+                           Bsum_w, nthreads);
+            break;
         }
     }
 
     cleanup:
         free(Bsum_w);
+        free(Bsum_w_scaled);
+        free(Bsum_scaled);
         free(buffer_arr);
+        free(buffer_int);
     return return_val;
 }
 
@@ -217,20 +277,34 @@ int factors_single
     double *restrict A_old, size_t dimA,
     double *restrict X, sparse_ix X_ind[], size_t nnz,
     double *restrict B, double *restrict Bsum,
-    size_t npass, double l2_reg, double l1_new, double l1_old,
-    double w_mult, bool limit_step
+    int maxupd, double l2_reg, double l1_new, double l1_old,
+    double w_mult
 )
 {
     /* Note: Bsum should already have the *old* l1 regularization added to it */
     int k_int = (int) k;
     double l1_reg = l1_new - l1_old;
     double *restrict Bsum_pass = NULL;
+    double *restrict zeros_tncg = (double*)calloc(sizeof(double), k);
+    double *restrict inf_tncg = (double*)malloc(sizeof(double) * k);
+    int ret_code = 0;
+
+    fdata data = { B, NULL, X, X_ind, nnz, l2_reg, w_mult, k_int };
+    double fun_val = 0;
+    int niter = 0;
+    int nfeval = 0;
+
+    if (zeros_tncg == NULL || inf_tncg == NULL)
+        goto throw_oom;
+
     if (l1_reg > 0. || w_mult != 1.)
     {
         Bsum_pass = (double*)malloc(sizeof(double) * k);
         if (Bsum_pass == NULL) {
-            fprintf(stderr, "Error: out of memory.\n");
-            return 1;
+            throw_oom:
+                fprintf(stderr, "Error: out of memory.\n");
+                ret_code = 1;
+                goto cleanup;
         }
 
         if (w_mult != 1.) {
@@ -255,27 +329,36 @@ int factors_single
         Bsum_pass = Bsum;
     }
 
+    data.Bsum = Bsum_pass;
+
+    for (size_t ix = 0; ix < k; ix++)
+        inf_tncg[ix] = HUGE_VAL;
+
     /* Initialize to the mean of current factors */
     sum_by_cols(out, A_old, dimA, k);
     cblas_dscal((int)k, 1./(double)dimA, out, 1);
 
-    fdata data = { B, Bsum_pass, X, X_ind, nnz, l2_reg, w_mult };
-    double fun_val;
-    size_t niter;
-    size_t nfeval;
+    ret_code = tnc(
+        k_int, out, &fun_val,
+        (double*)NULL,
+        calc_fun_and_grad,
+        (void*) &data, zeros_tncg, inf_tncg, (double*)NULL,
+        (double*)NULL, 0, -1, maxupd,
+        0.25, 10., 0., 0.,
+        1e-4, -1., -1., 1.3,
+        &nfeval, &niter,
+        (double*)NULL, (int*)NULL);
 
-    int ret_code = minimize_nonneg_cg(
-        out, (int)k, &fun_val,
-        calc_fun_single, calc_grad_single, NULL, (void*) &data,
-        1e-5, 250, npass, &niter, &nfeval,
-        0.25, 0.01, 20, limit_step,
-        NULL, 1, 0);
-
-    if (l1_reg > 0. || w_mult != 1.) free(Bsum_pass);
-    if (ret_code == 4) {
-        fprintf(stderr, "Error: out of memory.\n");
-        return 1;
+    if (ret_code == -3) {
+        goto throw_oom;
     } else {
-        return 0;
+        ret_code = 0;
     }
+
+    cleanup:
+        if (l1_reg > 0. || w_mult != 1.)
+            free(Bsum_pass);
+        free(zeros_tncg);
+        free(inf_tncg);
+        return ret_code;
 }

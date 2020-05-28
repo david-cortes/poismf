@@ -11,11 +11,10 @@ topN.new(
   include = NULL,
   exclude = NULL,
   output_score = FALSE,
-  l2_reg = 1e+05,
-  l1_reg = 0,
-  weight_mult = 1,
-  nupd = 100,
-  limit_step = TRUE
+  l2_reg = model$l2_reg,
+  l1_reg = model$l1_reg,
+  weight_mult = model$weight_mult,
+  maxupd = model$maxupd
 )
 }
 \arguments{
@@ -47,20 +46,14 @@ one of `include` or `exclude`. Must not contain duplicated entries.}
 `FALSE`, will return a single array with the item IDs, otherwise
 will return a list with the item IDs and the scores.}
 
-\item{l2_reg}{Strength of L2 regularization to use for optimizing the new factors. Note
-that these are obtained through a conjugate-gradient method instead of
-proximal gradient, which works better with smaller regularization values.}
+\item{l2_reg}{Strength of L2 regularization to use for optimizing the new factors.}
 
-\item{l1_reg}{Strength of the L1 regularization (see description of argument above).
-Not recommended.}
+\item{l1_reg}{Strength of the L1 regularization. Not recommended.}
 
 \item{weight_mult}{Weight multiplier for the positive entries over the missing entries.}
 
-\item{nupd}{Maximum number of conjugate gradient updates.}
-
-\item{limit_step}{Whether to limit the step sizes so as to drive at most 1 variable
-to zero after each update. See documentation of \link{poismf} for
-details.}
+\item{maxupd}{Maximum number of Newton-CG updates to perform. You might want to
+increase this value depending on the use-case.}
 }
 \value{
 \itemize{
