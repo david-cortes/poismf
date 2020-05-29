@@ -1,4 +1,5 @@
 global-include *.pyx
+global-include *.pxi
 global-include *.c
 global-include *.h
 global-exclude *.o
