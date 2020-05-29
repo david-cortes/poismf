@@ -67,6 +67,12 @@ Older version from CRAN:
 install.packages("poismf")
 ```
 
+# Getting started
+
+Example IPython notebook using the package with the Last.FM dataset:
+
+[Notebook](http://nbviewer.jupyter.org/github/david-cortes/poismf/blob/master/example/example_poismf_lastfm.ipynb)
+
 
 # Sample usage
 
@@ -94,10 +100,10 @@ from poismf import PoisMF
 
 ### good speed, not-so-good quality
 model = PoisMF(k=5, method="pg")
-### balance between speed-quality
-model = PoisMF(k=5, method="cg")
 ### good quality, but slow
 model = PoisMF(k=5, method="tncg")
+### balance between speed-quality
+model = PoisMF(k=5, method="cg")
 model.fit(df)
 
 ### Predict functionality (chosen entries in X)
@@ -110,6 +116,8 @@ model.topN_new(X=df[["ItemId","Count"]].loc[df.UserId==2],
                n=5, exclude=df.ItemId.loc[df.UserId==2])
 ## For faster fitting without any checks and castings, can use 'fit_unsafe' too
 ```
+
+(For a longer example see the [IPython notebook](http://nbviewer.jupyter.org/github/david-cortes/poismf/blob/master/example/example_poismf_lastfm.ipynb) in the section above)
 
 * R
 
@@ -133,10 +141,10 @@ X <- X[!duplicated(X[, c("row_ix", "col_ix")]), ]
 ### Factorize the randomly-generated sparse matrix
 ### good speed, not-so-good quality
 model <- poismf(k=5, X, method="pg")
-### balance between speed-quality
-model <- poismf(k=5, X, method="cg")
 ### good quality, but slow
 model <- poismf(k=5, X, method="tncg")
+### balance between speed-quality
+model <- poismf(k=5, X, method="cg")
 
 ### Predict functionality (chosen entries in X)
 predict(model, 1, 10) ## entry [1, 10]
