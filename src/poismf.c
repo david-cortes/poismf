@@ -41,19 +41,19 @@
 /* Helper functions */
 #define nonneg(x) (((x) > 0.)? (x) : 0.)
 
-void dscal_large(size_t n, double alpha, double *restrict x)
+void dscal_large(size_t n, real_t alpha, real_t *restrict x)
 {
     if (n < (size_t)INT_MAX)
-        cblas_dscal((int)n, alpha, x, 1);
+        cblas_tscal((int)n, alpha, x, 1);
     else {
         for (size_t ix = 0; ix < n; ix++)
             x[ix] *= alpha;
     }
 }
 
-void sum_by_cols(double *restrict out, double *restrict M, size_t nrow, size_t ncol)
+void sum_by_cols(real_t *restrict out, real_t *restrict M, size_t nrow, size_t ncol)
 {
-    memset(out, 0, sizeof(double) * ncol);
+    memset(out, 0, sizeof(real_t) * ncol);
     for (size_t row = 0; row < nrow; row++)
         for (size_t col = 0; col < ncol; col++)
             out[col] += M[row*ncol + col];
@@ -61,13 +61,13 @@ void sum_by_cols(double *restrict out, double *restrict M, size_t nrow, size_t n
 
 void adjustment_Bsum
 (
-    double *restrict B,
-    double *restrict Bsum,
-    double *restrict Bsum_user,
+    real_t *restrict B,
+    real_t *restrict Bsum,
+    real_t *restrict Bsum_user,
     sparse_ix Xr_indices[],
     sparse_ix Xr_indptr[],
     size_t dimA, size_t k,
-    double w_mult, int nthreads
+    real_t w_mult, int nthreads
 )
 {
     #if defined(_OPENMP) && ((_OPENMP < 200801) || defined(_WIN32) || defined(_WIN64)) /* OpenMP < 3.0 */
@@ -79,15 +79,15 @@ void adjustment_Bsum
     #endif
 
     int k_int = (int) k;
-    memset(Bsum_user, 0, dimA*k*sizeof(double));
+    memset(Bsum_user, 0, dimA*k*sizeof(real_t));
     #pragma omp parallel for schedule(dynamic) num_threads(nthreads) \
             shared(dimA, Xr_indptr, Xr_indices, B, Bsum_user, k_int)
     for (row = 0; row < dimA; row++)
         for (size_t ix = Xr_indptr[row]; ix < Xr_indptr[row + 1]; ix++)
-            cblas_daxpy(k_int, 1., B + Xr_indices[ix]*k, 1, Bsum_user + row*k, 1);
+            cblas_taxpy(k_int, 1., B + Xr_indices[ix]*k, 1, Bsum_user + row*k, 1);
 
     size_t n = dimA * k;
-    double new_w = w_mult - 1.;
+    real_t new_w = w_mult - 1.;
     /* Note: don't use daxpy here as 'n' might be larger than INT_MAX */
     #pragma omp parallel for schedule(static) num_threads(nthreads) \
             shared(n, new_w, Bsum_user)
@@ -96,16 +96,16 @@ void adjustment_Bsum
     #pragma omp parallel for schedule(static) num_threads(nthreads) \
             shared(dimA, k, k_int, Bsum, Bsum_user)
     for (row = 0; row < dimA; row++)
-        cblas_daxpy(k_int, 1., Bsum, 1, Bsum_user + row*k, 1);
+        cblas_taxpy(k_int, 1., Bsum, 1, Bsum_user + row*k, 1);
 }
 
 /* Functions for Proximal Gradient */
-void calc_grad_pgd(double *out, double *curr, double *F, double *X, sparse_ix *Xind, sparse_ix nnz_this, int k)
+void calc_grad_pgd(real_t *out, real_t *curr, real_t *F, real_t *X, sparse_ix *Xind, sparse_ix nnz_this, int k)
 {
     size_t k_szt = (size_t)k;
-    memset(out, 0, sizeof(double) * (size_t)k);
+    memset(out, 0, sizeof(real_t) * (size_t)k);
     for (sparse_ix ix = 0; ix < nnz_this; ix++){
-        cblas_daxpy(k, X[ix] / cblas_ddot(k, F + (size_t)Xind[ix] * k_szt, 1, curr, 1),
+        cblas_taxpy(k, X[ix] / cblas_tdot(k, F + (size_t)Xind[ix] * k_szt, 1, curr, 1),
                     F + (size_t)Xind[ix] * k_szt, 1, out, 1);
     }
 }
@@ -116,19 +116,19 @@ void calc_grad_pgd(double *out, double *curr, double *F, double *X, sparse_ix *X
     column-sparse format */
 void pg_iteration
 (
-    double *A, double *B,
-    double *Xr, sparse_ix *Xr_indptr, sparse_ix *Xr_indices,
+    real_t *A, real_t *B,
+    real_t *Xr, sparse_ix *Xr_indptr, sparse_ix *Xr_indices,
     size_t dimA, size_t k,
-    double cnst_div, double *cnst_sum, double *Bsum_user,
-    double step_size, double w_mult, size_t maxupd,
-    double *buffer_arr, int nthreads
+    real_t cnst_div, real_t *cnst_sum, real_t *Bsum_user,
+    real_t step_size, real_t w_mult, size_t maxupd,
+    real_t *buffer_arr, int nthreads
 )
 {
     int k_int = (int) k;
     sparse_ix nnz_this;
     step_size *= w_mult;
 
-    double *Bsum = cnst_sum;
+    real_t *Bsum = cnst_sum;
 
     #if defined(_OPENMP) && ((_OPENMP < 200801) || defined(_WIN32) || defined(_WIN64)) /* OpenMP < 3.0 */
     long long ia;
@@ -148,12 +148,12 @@ void pg_iteration
             calc_grad_pgd(buffer_arr + k*omp_get_thread_num(),
                           A + ia*k, B, Xr + Xr_indptr[ia],
                           Xr_indices + Xr_indptr[ia], nnz_this, k_int);
-            cblas_daxpy(k_int, step_size,
+            cblas_taxpy(k_int, step_size,
                         buffer_arr + k*omp_get_thread_num(), 1,
                         A + ia*k, 1);
 
-            cblas_daxpy(k_int, 1., Bsum, 1, A + ia*k, 1);
-            cblas_dscal(k_int, cnst_div, A + ia*k, 1);
+            cblas_taxpy(k_int, 1., Bsum, 1, A + ia*k, 1);
+            cblas_tscal(k_int, cnst_div, A + ia*k, 1);
             for (size_t ix = 0; ix < k; ix++)
                 A[ia*k + ix] = nonneg(A[ia*k + ix]);
         }
@@ -162,59 +162,59 @@ void pg_iteration
 }
 
 /* Functions for Conjugate Gradient */
-void calc_fun_single(double a_row[], int k_int, double *f, void *data)
+void calc_fun_single(real_t a_row[], int k_int, real_t *f, void *data)
 {
     fdata* fun_data = (fdata*) data;
     size_t k = (size_t)k_int;
-    double reg_term = cblas_ddot(k_int, fun_data->Bsum, 1, a_row, 1);
-    reg_term += fun_data->l2_reg * cblas_ddot(k_int, a_row, 1, a_row, 1);
-    double lsum = 0.;
+    real_t reg_term = cblas_tdot(k_int, fun_data->Bsum, 1, a_row, 1);
+    reg_term += fun_data->l2_reg * cblas_tdot(k_int, a_row, 1, a_row, 1);
+    real_t lsum = 0.;
     for (size_t ix = 0; ix < fun_data->nnz_this; ix++)
     {
         lsum += fun_data->Xr[ix]
-                 * log( cblas_ddot(k_int, a_row, 1,
+                 * log( cblas_tdot(k_int, a_row, 1,
                                    fun_data->B + fun_data->X_ind[ix]*k, 1) );
     }
     *f = reg_term - lsum * fun_data->w_mult;
 }
 
-void calc_grad_single(double a_row[], int k_int, double grad[], void *data)
+void calc_grad_single(real_t a_row[], int k_int, real_t grad[], void *data)
 {
     fdata* fun_data = (fdata*) data;
     size_t k = (size_t)k_int;
-    memcpy(grad, fun_data->Bsum, sizeof(double) * k);
-    cblas_daxpy(k_int, 2. * fun_data->l2_reg, a_row, 1, grad, 1);
+    memcpy(grad, fun_data->Bsum, sizeof(real_t) * k);
+    cblas_taxpy(k_int, 2. * fun_data->l2_reg, a_row, 1, grad, 1);
     for (size_t ix = 0; ix < fun_data->nnz_this; ix++)
     {
-        cblas_daxpy(k_int, - fun_data->Xr[ix]
-                             / cblas_ddot(k_int, a_row, 1,
+        cblas_taxpy(k_int, - fun_data->Xr[ix]
+                             / cblas_tdot(k_int, a_row, 1,
                                           fun_data->B + fun_data->X_ind[ix]*k, 1),
                     fun_data->B + fun_data->X_ind[ix]*k, 1, grad, 1);
     }
 }
 
-void calc_grad_single_w(double a_row[], int k_int, double grad[], void *data)
+void calc_grad_single_w(real_t a_row[], int k_int, real_t grad[], void *data)
 {
     fdata* fun_data = (fdata*) data;
     size_t k = (size_t)k_int;
-    memset(grad, 0, k*sizeof(double));
+    memset(grad, 0, k*sizeof(real_t));
     for (size_t ix = 0; ix < fun_data->nnz_this; ix++)
     {
-        cblas_daxpy(k_int, - fun_data->Xr[ix]
-                             / cblas_ddot(k_int, a_row, 1,
+        cblas_taxpy(k_int, - fun_data->Xr[ix]
+                             / cblas_tdot(k_int, a_row, 1,
                                           fun_data->B + fun_data->X_ind[ix]*k, 1),
                     fun_data->B + fun_data->X_ind[ix]*k, 1, grad, 1);
     }
-    cblas_dscal(k_int, fun_data->w_mult, grad, 1);
-    cblas_daxpy(k_int, 1., fun_data->Bsum, 1, grad, 1);
-    cblas_daxpy(k_int, 2. * fun_data->l2_reg, a_row, 1, grad, 1);
+    cblas_tscal(k_int, fun_data->w_mult, grad, 1);
+    cblas_taxpy(k_int, 1., fun_data->Bsum, 1, grad, 1);
+    cblas_taxpy(k_int, 2. * fun_data->l2_reg, a_row, 1, grad, 1);
 }
 
 int calc_fun_and_grad
 (
-    double *restrict a_row,
-    double *restrict f,
-    double *restrict grad,
+    real_t *restrict a_row,
+    real_t *restrict f,
+    real_t *restrict grad,
     void *data
 )
 {
@@ -222,22 +222,22 @@ int calc_fun_and_grad
     int k_int = fun_data->k;
     size_t k = (size_t)k_int;
 
-    double pred;
-    double lsum = 0;
-    memset(grad, 0, k*sizeof(double));
+    real_t pred;
+    real_t lsum = 0;
+    memset(grad, 0, k*sizeof(real_t));
     for (size_t ix = 0; ix < fun_data->nnz_this; ix++)
     {
-        pred = cblas_ddot(k_int, a_row, 1, fun_data->B + fun_data->X_ind[ix]*k, 1);
-        cblas_daxpy(k_int, - fun_data->Xr[ix] / pred,
+        pred = cblas_tdot(k_int, a_row, 1, fun_data->B + fun_data->X_ind[ix]*k, 1);
+        cblas_taxpy(k_int, - fun_data->Xr[ix] / pred,
                     fun_data->B + fun_data->X_ind[ix]*k, 1, grad, 1);
         lsum += fun_data->Xr[ix] * log(pred);
     }
 
     if (fun_data->w_mult != 1.)
-        cblas_dscal(k_int, fun_data->w_mult, grad, 1);
-    cblas_daxpy(k_int, 1., fun_data->Bsum, 1, grad, 1);
-    double reg_term = cblas_ddot(k_int, fun_data->Bsum, 1, a_row, 1);
-    cblas_daxpy(k_int, 2. * fun_data->l2_reg, a_row, 1, grad, 1);
+        cblas_tscal(k_int, fun_data->w_mult, grad, 1);
+    cblas_taxpy(k_int, 1., fun_data->Bsum, 1, grad, 1);
+    real_t reg_term = cblas_tdot(k_int, fun_data->Bsum, 1, a_row, 1);
+    cblas_taxpy(k_int, 2. * fun_data->l2_reg, a_row, 1, grad, 1);
 
     *f = reg_term - lsum * fun_data->w_mult;
     return 0;
@@ -245,17 +245,17 @@ int calc_fun_and_grad
 
 void cg_iteration
 (
-    double *A, double *B,
-    double *Xr, sparse_ix *Xr_indptr, sparse_ix *Xr_indices,
+    real_t *A, real_t *B,
+    real_t *Xr, sparse_ix *Xr_indptr, sparse_ix *Xr_indices,
     size_t dimA, size_t k, bool limit_step,
-    double *Bsum, double l2_reg, double w_mult, size_t maxupd,
-    double *buffer_arr, double *Bsum_w, int nthreads
+    real_t *Bsum, real_t l2_reg, real_t w_mult, size_t maxupd,
+    real_t *buffer_arr, real_t *Bsum_w, int nthreads
 )
 {
     int k_int = (int) k;
 
     fdata data = { B, Bsum, NULL, NULL, 0, l2_reg, w_mult, k_int };
-    double fun_val;
+    real_t fun_val;
     size_t niter;
     size_t nfeval;
     grad_eval *grad_fun = (w_mult == 1.)? calc_grad_single : calc_grad_single_w;
@@ -286,22 +286,22 @@ void cg_iteration
 
 void tncg_iteration
 (
-    double *A, double *B,
-    double *Xr, sparse_ix *Xr_indptr, sparse_ix *Xr_indices,
+    real_t *A, real_t *B,
+    real_t *Xr, sparse_ix *Xr_indptr, sparse_ix *Xr_indices,
     size_t dimA, size_t k,
-    double *Bsum, double l2_reg, double w_mult, int maxupd,
-    double *buffer_arr, int *buffer_int,
-    double *zeros_tncg, double *inf_tncg,
-    double *Bsum_w, int nthreads
+    real_t *Bsum, real_t l2_reg, real_t w_mult, int maxupd,
+    real_t *buffer_arr, int *buffer_int,
+    real_t *zeros_tncg, real_t *inf_tncg,
+    real_t *Bsum_w, int nthreads
 )
 {
     int k_int = (int) k;
 
     fdata data = { B, Bsum, NULL, NULL, 0, l2_reg, w_mult, k_int };
-    double fun_val = 0;
+    real_t fun_val = 0;
     int niter = 0;
     int nfeval = 0;
-    int maxCGit = (int) fmax(1., fmin(50., (double)k/2.));
+    int maxCGit = (int) fmax(1., fmin(50., (real_t)k/2.));
 
     #if defined(_OPENMP) && ((_OPENMP < 200801) || defined(_WIN32) || defined(_WIN64))
     long long ia;
@@ -366,18 +366,18 @@ and are assumed to be in row-major order.
 Returns 0 if it succeeds, 1 if it runs out of memory.
 */
 int run_poismf(
-    double *restrict A, double *restrict Xr, sparse_ix *restrict Xr_indptr, sparse_ix *restrict Xr_indices,
-    double *restrict B, double *restrict Xc, sparse_ix *restrict Xc_indptr, sparse_ix *restrict Xc_indices,
+    real_t *restrict A, real_t *restrict Xr, sparse_ix *restrict Xr_indptr, sparse_ix *restrict Xr_indices,
+    real_t *restrict B, real_t *restrict Xc, sparse_ix *restrict Xc_indptr, sparse_ix *restrict Xc_indices,
     const size_t dimA, const size_t dimB, const size_t k,
-    const double l2_reg, const double l1_reg, const double w_mult, double step_size,
+    const real_t l2_reg, const real_t l1_reg, const real_t w_mult, real_t step_size,
     const Method method, const bool limit_step, const size_t numiter, const size_t maxupd,
     const int nthreads)
 {
 
-    double *cnst_sum = (double*) malloc(sizeof(double) * k);
-    double cnst_div;
+    real_t *cnst_sum = (real_t*) malloc(sizeof(real_t) * k);
+    real_t cnst_div;
     int k_int = (int) k;
-    double neg_step_sz = -step_size;
+    real_t neg_step_sz = -step_size;
     size_t size_buffer = 1;
     switch(method) {
         case pg:   {size_buffer = 1;  break;}
@@ -385,24 +385,24 @@ int run_poismf(
         case tncg: {size_buffer = 22; break;}
     }
     size_buffer *= (k * (size_t)nthreads);
-    double *buffer_arr = (double*) malloc(sizeof(double) * size_buffer);
-    double *Bsum_w = NULL;
+    real_t *buffer_arr = (real_t*) malloc(sizeof(real_t) * size_buffer);
+    real_t *Bsum_w = NULL;
     int *buffer_int = NULL;
-    double *zeros_tncg = NULL;
-    double *inf_tncg = NULL;
+    real_t *zeros_tncg = NULL;
+    real_t *inf_tncg = NULL;
     int ret_code = 0;
     should_stop_procedure = false;
 
 
     if (w_mult != 1.) {
-        Bsum_w = (double*)malloc(sizeof(double) * k * ((dimA > dimB)? dimA : dimB));
+        Bsum_w = (real_t*)malloc(sizeof(real_t) * k * ((dimA > dimB)? dimA : dimB));
         if (Bsum_w == NULL) goto throw_oom;
     }
 
     if (method == tncg) {
         buffer_int = (int*)malloc(sizeof(int) * k *(size_t)nthreads);
-        zeros_tncg = (double*)calloc(sizeof(double), k);
-        inf_tncg = (double*)malloc(sizeof(double) * k);
+        zeros_tncg = (real_t*)calloc(sizeof(real_t), k);
+        inf_tncg = (real_t*)malloc(sizeof(real_t) * k);
         if (buffer_int == NULL || zeros_tncg == NULL || inf_tncg == NULL)
             goto throw_oom;
         for (size_t ix = 0; ix < k; ix++)
@@ -436,10 +436,10 @@ int run_poismf(
             case pg:
             {
                 if (w_mult == 1.)
-                    cblas_dscal(k_int, neg_step_sz, cnst_sum, 1);
+                    cblas_tscal(k_int, neg_step_sz, cnst_sum, 1);
                 else
                     dscal_large(dimA*k, neg_step_sz, Bsum_w);
-                cblas_dscal(k_int, neg_step_sz, cnst_sum, 1);
+                cblas_tscal(k_int, neg_step_sz, cnst_sum, 1);
                 pg_iteration(A, B, Xr, Xr_indptr, Xr_indices,
                              dimA, k, cnst_div, cnst_sum, Bsum_w, step_size,
                              w_mult, maxupd, buffer_arr, nthreads);
@@ -483,7 +483,7 @@ int run_poismf(
             case pg:
             {
                 if (w_mult == 1.)
-                    cblas_dscal(k_int, neg_step_sz, cnst_sum, 1);
+                    cblas_tscal(k_int, neg_step_sz, cnst_sum, 1);
                 else
                     dscal_large(dimB*k, neg_step_sz, Bsum_w);
                 pg_iteration(B, A, Xc, Xc_indptr, Xc_indices,

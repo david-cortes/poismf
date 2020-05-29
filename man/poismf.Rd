@@ -36,7 +36,7 @@ along the way (so it will be slightly slower).
 \item A sparse matrix in COO format from the `SparseM` package. Such a matrix
 can be created from row/column indices through
 `new("matrix.coo", ra=values, ja=col_ix, ia=row_ix, dim=as.integer(c(m,n)))`.
-Will also accept them in CSR and CSC format, but will be converted along the way,
+Will also accept them in CSR and CSC format, but will be converted along the way
 (so it will be slightly slower).
 \item A full matrix (of class `base::matrix`) - this is not recommended though.
 }
@@ -76,6 +76,8 @@ over both matrices. If passing `'auto'`, will set it to 50 for TNCG,
 25 for CG, and 10 for PG.}
 
 \item{maxupd}{Maximum number of updates to each user/item vector within an iteration.
+Note: for 'method=TNCG', this means maximum number of \bold{function
+evaluations} rather than number of updates, so it should be higher.
 You might also want to try decreasing this while increasing `niter`.
 For `method='pg'`, this will be taken as the actual number of updates,
 as it does not perform a line search like the other methods.
@@ -185,8 +187,8 @@ model <- poismf(X, k=5, method="cg", nthreads=1)
 ### better quality, but much slower (truncated Newton-CG)
 model <- poismf(X, k=5, method="tncg", nthreads=1)
 
-### for getting sparse factors
 \donttest{
+### for getting sparse factors
 model <- poismf(X, k=50, method="tncg")
 mean(model$A == 0.)
 }

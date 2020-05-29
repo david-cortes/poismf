@@ -41,8 +41,8 @@
 /* Generic helper function that predicts multiple combinations of users and items from already-fit A and B matrices */
 void predict_multiple
 (
-    double *restrict out,
-    double *restrict A, double *restrict B,
+    real_t *restrict out,
+    real_t *restrict A, real_t *restrict B,
     sparse_ix *ixA, sparse_ix *ixB,
     size_t n, int k,
     int nthreads
@@ -58,18 +58,18 @@ void predict_multiple
     #pragma omp parallel for schedule(static) num_threads(nthreads) \
             shared(out, n, A, B, ixA, ixB, k, k_szt)
     for (ix = 0; ix < n; ix++) {
-        out[ix] = cblas_ddot(k, A + (size_t)ixA[ix] * k_szt, 1,
+        out[ix] = cblas_tdot(k, A + (size_t)ixA[ix] * k_szt, 1,
                                 B + (size_t)ixB[ix] * k_szt, 1);
     }
 }
 
 long double eval_llk
 (
-    double *restrict A,
-    double *restrict B,
+    real_t *restrict A,
+    real_t *restrict B,
     sparse_ix ixA[],
     sparse_ix ixB[],
-    double *restrict X,
+    real_t *restrict X,
     size_t nnz, int k,
     bool full_llk, bool include_missing,
     size_t dimA, size_t dimB,
@@ -81,12 +81,12 @@ long double eval_llk
     #else
     size_t ix = 0;
     #endif
-    double pred;
+    real_t pred;
     size_t k_szt = (size_t)k;
     long double llk = 0;
 
-    double *restrict sumA = NULL;
-    double *restrict sumB = NULL;
+    real_t *restrict sumA = NULL;
+    real_t *restrict sumB = NULL;
 
     if (!include_missing)
     {
@@ -94,7 +94,7 @@ long double eval_llk
                 reduction(+:llk) private(pred) shared(A, B, ixA, ixB, k, k_szt, X, nnz)
         for (ix = 0; ix < nnz; ix++)
         {
-            pred = cblas_ddot(k, A + (size_t)ixA[ix] * k_szt, 1,
+            pred = cblas_tdot(k, A + (size_t)ixA[ix] * k_szt, 1,
                                  B + (size_t)ixB[ix] * k_szt, 1);
             llk += X[ix] * log(pred) - pred;
         }
@@ -102,8 +102,8 @@ long double eval_llk
 
     else
     {
-        sumA = (double*) malloc(k_szt * sizeof(double));
-        sumB = (double*) malloc(k_szt * sizeof(double));
+        sumA = (real_t*) malloc(k_szt * sizeof(real_t));
+        sumB = (real_t*) malloc(k_szt * sizeof(real_t));
         if (sumA == NULL || sumB == NULL) {
             fprintf(stderr, "Error: out of memory.\n");
             llk = NAN;
@@ -115,9 +115,9 @@ long double eval_llk
         #pragma omp parallel for schedule(static) num_threads(nthreads) \
                 reduction(+:llk) shared(X, nnz, A, B, ixA, ixB, k, k_szt)
         for (ix = 0; ix < nnz; ix++)
-            llk += X[ix] * log(cblas_ddot(k, A + (size_t)ixA[ix] * k_szt, 1,
+            llk += X[ix] * log(cblas_tdot(k, A + (size_t)ixA[ix] * k_szt, 1,
                                              B + (size_t)ixB[ix] * k_szt, 1));
-        llk -= cblas_ddot(k, sumA, 1, sumB, 1);
+        llk -= cblas_tdot(k, sumA, 1, sumB, 1);
     }
 
     if (full_llk)
@@ -138,11 +138,11 @@ long double eval_llk
 
 int factors_multiple
 (
-    double *A, double *B, double *A_old, double *Bsum,
-    double *Xr, sparse_ix *Xr_indptr, sparse_ix *Xr_indices,
+    real_t *A, real_t *B, real_t *A_old, real_t *Bsum,
+    real_t *Xr, sparse_ix *Xr_indptr, sparse_ix *Xr_indices,
     int k, size_t dimA,
-    double l2_reg, double w_mult,
-    double step_size, size_t niter, size_t maxupd,
+    real_t l2_reg, real_t w_mult,
+    real_t step_size, size_t niter, size_t maxupd,
     Method method, bool limit_step,
     int nthreads
 )
@@ -155,10 +155,10 @@ int factors_multiple
     #endif
 
     size_t k_szt = (size_t) k;
-    double cnst_div;
-    double *Bsum_w = NULL;
-    double *Bsum_w_scaled = NULL;
-    double *Bsum_scaled = NULL;
+    real_t cnst_div;
+    real_t *Bsum_w = NULL;
+    real_t *Bsum_w_scaled = NULL;
+    real_t *Bsum_scaled = NULL;
     size_t size_buffer = 1;
     switch(method) {
         case pg:   {size_buffer = 1;  break;}
@@ -166,10 +166,10 @@ int factors_multiple
         case tncg: {size_buffer = 22; break;}
     }
     size_buffer *= (k_szt * (size_t)nthreads);
-    double *buffer_arr = (double*) malloc(sizeof(double) * size_buffer);
+    real_t *buffer_arr = (real_t*) malloc(sizeof(real_t) * size_buffer);
     int *buffer_int = NULL;
-    double *zeros_tncg = NULL;
-    double *inf_tncg = NULL;
+    real_t *zeros_tncg = NULL;
+    real_t *inf_tncg = NULL;
 
     int return_val = 0;
 
@@ -182,18 +182,18 @@ int factors_multiple
 
     if (method == pg) {
         if (w_mult == 1.) {
-            Bsum_scaled = (double*)malloc(sizeof(double) * k_szt);
+            Bsum_scaled = (real_t*)malloc(sizeof(real_t) * k_szt);
             if (Bsum_scaled == NULL) goto throw_oom;
         }
 
         else {
-            Bsum_w_scaled = (double*)malloc(sizeof(double) * k_szt * dimA);
+            Bsum_w_scaled = (real_t*)malloc(sizeof(real_t) * k_szt * dimA);
             if (Bsum_w_scaled == NULL) goto throw_oom;
         }
     }
 
     if (w_mult != 1.) {
-        Bsum_w = (double*)malloc(sizeof(double) * k_szt * dimA);
+        Bsum_w = (real_t*)malloc(sizeof(real_t) * k_szt * dimA);
         if (Bsum_w == NULL) goto throw_oom;
         adjustment_Bsum(B, Bsum, Bsum_w,
                         Xr_indices, Xr_indptr,
@@ -204,8 +204,8 @@ int factors_multiple
 
     if (method == tncg) {
         buffer_int = (int*)malloc(sizeof(int) * k_szt * (size_t)nthreads);
-        zeros_tncg = (double*)calloc(sizeof(double), k_szt);
-        inf_tncg = (double*)malloc(sizeof(double) * k_szt);
+        zeros_tncg = (real_t*)calloc(sizeof(real_t), k_szt);
+        inf_tncg = (real_t*)malloc(sizeof(real_t) * k_szt);
         if (buffer_int == NULL || zeros_tncg == NULL || inf_tncg == NULL)
             goto throw_oom;
         for (size_t ix = 0; ix < k_szt; ix++)
@@ -214,11 +214,11 @@ int factors_multiple
 
     /* Initialize all values to the mean of old A */
     sum_by_cols(A, A_old, dimA, k_szt);
-    cblas_dscal(k, 1./(double)dimA, A, 1);
+    cblas_tscal(k, 1./(real_t)dimA, A, 1);
     #pragma omp parallel for schedule(static) num_threads(nthreads) \
             shared(dimA, A, k_szt)
     for (ix = 1; ix < dimA; ix++)
-        memcpy(A + (size_t)ix*k_szt, A, k_szt*sizeof(double));
+        memcpy(A + (size_t)ix*k_szt, A, k_szt*sizeof(real_t));
 
     switch(method) {
         case pg:
@@ -226,11 +226,11 @@ int factors_multiple
             for (size_t iter = 0; iter < niter; iter++)
             {
                 if (w_mult == 1.) {
-                    memcpy(Bsum_scaled, Bsum, sizeof(double) * k_szt);
-                    cblas_dscal(k, -step_size, Bsum_scaled, 1);
+                    memcpy(Bsum_scaled, Bsum, sizeof(real_t) * k_szt);
+                    cblas_tscal(k, -step_size, Bsum_scaled, 1);
                 }
                 else {
-                    memcpy(Bsum_w_scaled, Bsum_w, sizeof(double) * k_szt * dimA);
+                    memcpy(Bsum_w_scaled, Bsum_w, sizeof(real_t) * k_szt * dimA);
                     dscal_large(dimA*k_szt, -step_size, Bsum_w_scaled);
                 }
                 cnst_div = 1. / (1. + 2. * l2_reg * step_size);
@@ -273,24 +273,24 @@ int factors_multiple
 
 int factors_single
 (
-    double *restrict out, size_t k,
-    double *restrict A_old, size_t dimA,
-    double *restrict X, sparse_ix X_ind[], size_t nnz,
-    double *restrict B, double *restrict Bsum,
-    int maxupd, double l2_reg, double l1_new, double l1_old,
-    double w_mult
+    real_t *restrict out, size_t k,
+    real_t *restrict A_old, size_t dimA,
+    real_t *restrict X, sparse_ix X_ind[], size_t nnz,
+    real_t *restrict B, real_t *restrict Bsum,
+    int maxupd, real_t l2_reg, real_t l1_new, real_t l1_old,
+    real_t w_mult
 )
 {
     /* Note: Bsum should already have the *old* l1 regularization added to it */
     int k_int = (int) k;
-    double l1_reg = l1_new - l1_old;
-    double *restrict Bsum_pass = NULL;
-    double *restrict zeros_tncg = (double*)calloc(sizeof(double), k);
-    double *restrict inf_tncg = (double*)malloc(sizeof(double) * k);
+    real_t l1_reg = l1_new - l1_old;
+    real_t *restrict Bsum_pass = NULL;
+    real_t *restrict zeros_tncg = (real_t*)calloc(sizeof(real_t), k);
+    real_t *restrict inf_tncg = (real_t*)malloc(sizeof(real_t) * k);
     int ret_code = 0;
 
     fdata data = { B, NULL, X, X_ind, nnz, l2_reg, w_mult, k_int };
-    double fun_val = 0;
+    real_t fun_val = 0;
     int niter = 0;
     int nfeval = 0;
 
@@ -299,7 +299,7 @@ int factors_single
 
     if (l1_reg > 0. || w_mult != 1.)
     {
-        Bsum_pass = (double*)malloc(sizeof(double) * k);
+        Bsum_pass = (real_t*)malloc(sizeof(real_t) * k);
         if (Bsum_pass == NULL) {
             throw_oom:
                 fprintf(stderr, "Error: out of memory.\n");
@@ -308,15 +308,15 @@ int factors_single
         }
 
         if (w_mult != 1.) {
-            memset(Bsum_pass, 0, sizeof(double) * k);
+            memset(Bsum_pass, 0, sizeof(real_t) * k);
             for (size_t ix = 0; ix < nnz; ix++)
-                cblas_daxpy(k_int, 1., B + X_ind[ix]*k, 1, Bsum_pass, 1);
-            cblas_dscal(k_int, w_mult - 1., Bsum_pass, 1);
-            cblas_daxpy(k_int, 1., Bsum, 1, Bsum_pass, 1);
+                cblas_taxpy(k_int, 1., B + X_ind[ix]*k, 1, Bsum_pass, 1);
+            cblas_tscal(k_int, w_mult - 1., Bsum_pass, 1);
+            cblas_taxpy(k_int, 1., Bsum, 1, Bsum_pass, 1);
         }
 
         else {
-            memcpy(Bsum_pass, Bsum, sizeof(double) * k);
+            memcpy(Bsum_pass, Bsum, sizeof(real_t) * k);
         }
 
         if (l1_reg > 0.) {
@@ -336,18 +336,18 @@ int factors_single
 
     /* Initialize to the mean of current factors */
     sum_by_cols(out, A_old, dimA, k);
-    cblas_dscal((int)k, 1./(double)dimA, out, 1);
+    cblas_tscal((int)k, 1./(real_t)dimA, out, 1);
 
     ret_code = tnc(
         k_int, out, &fun_val,
-        (double*)NULL,
+        (real_t*)NULL,
         calc_fun_and_grad,
-        (void*) &data, zeros_tncg, inf_tncg, (double*)NULL,
-        (double*)NULL, 0, -1, maxupd,
+        (void*) &data, zeros_tncg, inf_tncg, (real_t*)NULL,
+        (real_t*)NULL, 0, -1, maxupd,
         0.25, 10., 0., 0.,
         1e-4, -1., -1., 1.3,
         &nfeval, &niter,
-        (double*)NULL, (int*)NULL);
+        (real_t*)NULL, (int*)NULL);
 
     if (ret_code == -3) {
         goto throw_oom;

@@ -1,9 +1,9 @@
 import pandas as pd, numpy as np
 import multiprocessing, os, warnings, ctypes
 from scipy.sparse import coo_matrix, csr_matrix, csc_matrix
-from .poismf_c_wrapper import _run_poismf, _predict_multiple, \
-    _predict_factors, _predict_factors_multiple, \
-    _eval_llk_test, _call_topN
+from . import c_funs_double, c_funs_float
+
+__all__ = ["PoisMF"]
 
 class PoisMF:
     """
@@ -72,6 +72,8 @@ class PoisMF:
         25 for CG, and 10 for PG.
     maxupd : int
         Maximum number of updates to each user/item vector within an iteration.
+        **Note: for 'method=TNCG', this means maximum number of function
+        evaluations rather than number of updates, so it should be higher.**
         You might also want to try decreasing this while increasing ``niter``.
         For ``method='pg'``, this will be taken as the actual number of updates,
         as it does not perform a line search like the other methods.
@@ -119,6 +121,11 @@ class PoisMF:
         are used to speed-up the prediction API of this package. You can still
         predict without them, but it might take some additional miliseconds
         (or more depending on the number of users and items).
+    use_float : bool
+        Whether to use C float type (typically ``np.float32``) instead of
+        C double type (typically ``np.float64``). Using float types is
+        faster and uses less memory, but it has less numerical precision,
+        which is problematic with this type of model.
     nthreads : int
         Number of threads to use to parallelize computations.
         If set to 0 or less, will use the maximum available on the computer.
@@ -158,7 +165,7 @@ class PoisMF:
                  limit_step = True, initial_step = 1e-7,
                  weight_mult = 1.0, init_type = "gamma", random_state = 1,
                  reindex = True, copy_data = True, produce_dicts = False,
-                 nthreads = -1):
+                 use_float = False, nthreads = -1):
         assert method in ["tncg", "cg", "pg"]
         if (isinstance(k, float) or
             isinstance(k, np.float32) or
@@ -214,6 +221,8 @@ class PoisMF:
         self.maxupd = maxupd
         self.method = method
         self.limit_step = bool(limit_step)
+        self.use_float = bool(use_float)
+        self._dtype = ctypes.c_float if self.use_float else ctypes.c_double
         self.nthreads = nthreads
 
         self.reindex = bool(reindex)
@@ -226,8 +235,8 @@ class PoisMF:
         self._reset_state()
 
     def _reset_state(self):
-        self.A = np.empty((0,0), dtype=ctypes.c_double)
-        self.B = np.empty((0,0), dtype=ctypes.c_double)
+        self.A = np.empty((0,0), dtype=self._dtype)
+        self.B = np.empty((0,0), dtype=self._dtype)
         self.user_mapping_ = np.empty(0, dtype=object)
         self.item_mapping_ = np.empty(0, dtype=object)
         self.user_dict_ = dict()
@@ -301,10 +310,12 @@ class PoisMF:
 
         csr.indptr  = csr.indptr.astype(ctypes.c_size_t)
         csr.indices = csr.indices.astype(ctypes.c_size_t)
-        csr.data    = csr.data.astype(ctypes.c_double)
+        if csr.data.dtype != self._dtype:
+            csr.data  = csr.data.astype(self._dtype)
         csc.indptr  = csc.indptr.astype(ctypes.c_size_t)
         csc.indices = csc.indices.astype(ctypes.c_size_t)
-        csc.data    = csc.data.astype(ctypes.c_double)
+        if csc.data.dtype != self._dtype:
+            csc.data  = csc.data.astype(self._dtype)
 
         return csr, csc
             
@@ -312,24 +323,29 @@ class PoisMF:
     def _initialize_matrices(self):
         if self.init_type == "gamma":
             self.A = -np.log( self.random_state
-                                   .random(size = (self.nusers, self.k))
+                                   .random(size = (self.nusers, self.k),
+                                           dtype = self._dtype)
                                    .clip(min=1e-12, max=None) )
             self.B = -np.log( self.random_state
-                                   .random(size = (self.nitems, self.k))
+                                   .random(size = (self.nitems, self.k),
+                                           dtype = self._dtype)
                                    .clip(min=1e-12, max=None) )
         else:
-            self.A = self.random_state.random(size = (self.nusers, self.k))
-            self.B = self.random_state.random(size = (self.nitems, self.k))
+            self.A = self.random_state.random(size = (self.nusers, self.k),
+                                              dtype = self._dtype)
+            self.B = self.random_state.random(size = (self.nitems, self.k),
+                                              dtype = self._dtype)
     
     def _fit(self, csr, csc):
-        _run_poismf(
+        c_funs = c_funs_float if self.use_float else c_funs_double
+        c_funs._run_poismf(
             csr.data, csr.indices, csr.indptr,
             csc.data, csc.indices, csc.indptr,
             self.A, self.B,
             self.method, self.limit_step,
             self.l2_reg, self.l1_reg, self.weight_mult,
             self.initial_step, self.niter, self.maxupd, self.nthreads)
-        self.Bsum = self.B.sum(axis = 0).astype(ctypes.c_double) + self.l1_reg
+        self.Bsum = self.B.sum(axis = 0).astype(self._dtype) + self.l1_reg
 
     def fit_unsafe(self, A, B, Xcsr, Xcsc):
         """
@@ -365,7 +381,9 @@ class PoisMF:
             usually ``np.uint64``). Note that setting them to this type might
             render the matrices unusable in SciPy's own sparse module functions.
             The ``data`` part must be of type  C double (this is usually
-            ``np.float64``).
+            ``np.float64``) or C float (usually ``np.float32``) depending
+            on whether the object was constructed with ``use_float=True``
+            or ``use_float=False``.
         Xcsc : CSC(dimA, dimB)
             The 'X' matrix to factorize in sparse CSC format (from SciPy).
             See documentation about ``Xcsr`` for details.
@@ -451,12 +469,13 @@ class PoisMF:
         assert weight_mult > 0.
         ix, cnt = self._process_data_single(X)
         l2_reg, l1_reg = self._process_reg_params(l2_reg, l1_reg)
-        a_vec = _predict_factors(self.A, cnt, ix,
-                                 self.B, self.Bsum,
-                                 int(maxupd),
-                                 float(l2_reg),
-                                 float(l1_reg), float(self.l1_reg),
-                                 float(weight_mult))
+        c_funs = c_funs_float if self.use_float else c_funs_double
+        a_vec = c_funs._predict_factors(self.A, cnt, ix,
+                                        self.B, self.Bsum,
+                                        int(maxupd),
+                                        float(l2_reg),
+                                        float(l1_reg), float(self.l1_reg),
+                                        float(weight_mult))
         if np.any(np.isnan(a_vec)):
             raise ValueError("NaNs encountered in the result. Failed to produce latent factors.")
         if np.max(a_vec) <= 0:
@@ -489,8 +508,8 @@ class PoisMF:
 
         if X[0].dtype != ctypes.c_size_t:
             X[0] = X[0].astype(ctypes.c_size_t)
-        if X[1].dtype != ctypes.c_double:
-            X[1] = X[1].astype(ctypes.c_double)
+        if X[1].dtype != self._dtype:
+            X[1] = X[1].astype(self._dtype)
 
         return X[0], X[1]
 
@@ -556,21 +575,22 @@ class PoisMF:
         assert self.is_fitted
         assert X.shape[0] > 0
         Xr_indptr, Xr_indices, Xr, user_mapping_ = self._process_X_new_users(X)
-        A = _predict_factors_multiple(
-            self.A,
-            self.B,
-            self.Bsum,
-            Xr_indptr,
-            Xr_indices,
-            Xr,
-            self.l2_reg,
-            self.weight_mult,
-            self.initial_step,
-            self.niter,
-            self.maxupd,
-            self.method,
-            self.limit_step,
-            self.nthreads
+        c_funs = c_funs_float if self.use_float else c_funs_double
+        A = c_funs._predict_factors_multiple(
+                self.A,
+                self.B,
+                self.Bsum,
+                Xr_indptr,
+                Xr_indices,
+                Xr,
+                self.l2_reg,
+                self.weight_mult,
+                self.initial_step,
+                self.niter,
+                self.maxupd,
+                self.method,
+                self.limit_step,
+                self.nthreads
         )
 
         if user_mapping_.shape[0]:
@@ -605,7 +625,7 @@ class PoisMF:
         return (
             X.indptr.astype(ctypes.c_size_t),
             X.indices.astype(ctypes.c_size_t),
-            X.data.astype(ctypes.c_double),
+            X.data.astype(self._dtype),
             user_mapping_
             )
 
@@ -703,21 +723,26 @@ class PoisMF:
             else:
                 return self.A[user].dot(self.B[item].T).reshape(-1)[0]
         else:
+            c_funs = c_funs_float if self.use_float else c_funs_double
             nan_entries = (user  < 0) | (item < 0) | (user >= self.nusers) | (item >= self.nitems)
             if np.any(nan_entries):
                 if user.dtype != ctypes.c_size_t:
                     user = user.astype(ctypes.c_size_t)
                 if item.dtype != ctypes.c_size_t:
                     item = item.astype(ctypes.c_size_t)
-                out = np.empty(user.shape[0], dtype = ctypes.c_double)
-                _predict_multiple(out, self.A, self.B, user, item, self.nthreads)
+                out = np.empty(user.shape[0], dtype = self._dtype)
+                c_funs._predict_multiple(out, self.A, self.B, user,
+                                         item, self.nthreads)
                 return out
             else:
                 non_na_user = user[~nan_entries]
                 non_na_item = item[~nan_entries]
-                out = np.empty(user.shape[0], dtype = ctypes.c_double)
-                temp = np.empty(np.sum(~nan_entries), dtype = ctypes.c_double)
-                _predict_multiple(temp, self.A, self.B, non_na_user.astype(ctypes.c_size_t), non_na_item.astype(ctypes.c_size_t), self.nthreads)
+                out = np.empty(user.shape[0], dtype = self._dtype)
+                temp = np.empty(np.sum(~nan_entries), dtype = self._dtype)
+                c_funs._predict_multiple(temp, self.A, self.B,
+                                         non_na_user.astype(ctypes.c_size_t),
+                                         non_na_item.astype(ctypes.c_size_t),
+                                         self.nthreads)
                 out[~nan_entries] = temp
                 out[nan_entries] = np.nan
                 return out
@@ -790,7 +815,9 @@ class PoisMF:
         if exclude.shape[0]:
             if n > (self.nitems - exclude.shape[0]):
                 raise ValueError("'n' is larger than the number of available items.")
-        outp_ix, outp_score = _call_topN(
+
+        c_funs = c_funs_float if self.use_float else c_funs_double
+        outp_ix, outp_score = c_funs._call_topN(
             self.A[user],
             self.B,
             include,
@@ -937,7 +964,9 @@ class PoisMF:
         if exclude.shape[0]:
             if n > (self.nitems - exclude.shape[0]):
                 raise ValueError("'n' is larger than the number of available items.")
-        outp_ix, outp_score = _call_topN(
+
+        c_funs = c_funs_float if self.use_float else c_funs_double
+        outp_ix, outp_score = c_funs._call_topN(
             a_vec,
             self.B,
             include,
@@ -1001,7 +1030,8 @@ class PoisMF:
             Obtained log-likelihood (higher is better).
         """
         ixA, ixB, Xcoo = self._process_new_data(X_test)
-        return _eval_llk_test(
+        c_funs = c_funs_float if self.use_float else c_funs_double
+        return c_funs._eval_llk_test(
             self.A,
             self.B,
             ixA,
@@ -1029,8 +1059,8 @@ class PoisMF:
                 X_test["UserId"] = X_test["UserId"].astype(ctypes.c_size_t)
             if X_test.ItemId.dtype != ctypes.c_size_t:
                 X_test["ItemId"] = X_test["ItemId"].astype(ctypes.c_size_t)
-            if X_test.Count.dtype != ctypes.c_double:
-                X_test["Count"] = X_test["Count"].astype(ctypes.c_double)
+            if X_test.Count.dtype != self._dtype:
+                X_test["Count"] = X_test["Count"].astype(self._dtype)
 
             umin, umax = X_test.UserId.min(), X_test.UserId.max()
             imin, imax = X_test.ItemId.min(), X_test.ItemId.max()
@@ -1059,5 +1089,5 @@ class PoisMF:
         return (
             X_test.row.astype(ctypes.c_size_t),
             X_test.col.astype(ctypes.c_size_t),
-            X_test.data.astype(ctypes.c_double)
+            X_test.data.astype(self._dtype)
             )

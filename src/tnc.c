@@ -53,13 +53,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-#include "tnc.h"
 #include "poismf.h"
 
-// typedef enum {
-//     TNC_FALSE = 0,
-//     TNC_TRUE
-// } logical;
 #define logical bool
 #define TNC_FALSE false
 #define TNC_TRUE true
@@ -106,129 +101,129 @@ typedef enum {
 /*
  * Prototypes
  */
-static tnc_rc tnc_minimize(int n, double x[], double *f, double g[],
+static tnc_rc tnc_minimize(int n, real_t x[], real_t *f, real_t g[],
                            tnc_function * function, void *state,
-                           double xscale[], double xoffset[],
-                           double *fscale, double low[], double up[],
+                           real_t xscale[], real_t xoffset[],
+                           real_t *fscale, real_t low[], real_t up[],
                            tnc_message messages, int maxCGit,
                            int maxnfeval, int *nfeval, int *niter,
-                           double eta, double stepmx, double accuracy,
-                           double fmin, double ftol, double xtol,
-                           double pgtol, double rescale,
-                           double *restrict buffer, int *restrict buffer_int);
+                           real_t eta, real_t stepmx, real_t accuracy,
+                           real_t fmin, real_t ftol, real_t xtol,
+                           real_t pgtol, real_t rescale,
+                           real_t *restrict buffer, int *restrict buffer_int);
 
-static getptc_rc getptcInit(double *reltol, double *abstol, double tnytol,
-                            double eta, double rmu, double xbnd,
-                            double *u, double *fu, double *gu,
-                            double *xmin, double *fmin, double *gmin,
-                            double *xw, double *fw, double *gw, double *a,
-                            double *b, double *oldf, double *b1,
-                            double *scxbnd, double *e, double *step,
-                            double *factor, logical * braktd,
-                            double *gtest1, double *gtest2, double *tol);
+static getptc_rc getptcInit(real_t *reltol, real_t *abstol, real_t tnytol,
+                            real_t eta, real_t rmu, real_t xbnd,
+                            real_t *u, real_t *fu, real_t *gu,
+                            real_t *xmin, real_t *fmin, real_t *gmin,
+                            real_t *xw, real_t *fw, real_t *gw, real_t *a,
+                            real_t *b, real_t *oldf, real_t *b1,
+                            real_t *scxbnd, real_t *e, real_t *step,
+                            real_t *factor, logical * braktd,
+                            real_t *gtest1, real_t *gtest2, real_t *tol);
 
-static getptc_rc getptcIter(double big, double
-                            rtsmll, double *reltol, double *abstol,
-                            double tnytol, double fpresn, double xbnd,
-                            double *u, double *fu, double *gu,
-                            double *xmin, double *fmin, double *gmin,
-                            double *xw, double *fw, double *gw, double *a,
-                            double *b, double *oldf, double *b1,
-                            double *scxbnd, double *e, double *step,
-                            double *factor, logical * braktd,
-                            double *gtest1, double *gtest2, double *tol);
+static getptc_rc getptcIter(real_t big, real_t
+                            rtsmll, real_t *reltol, real_t *abstol,
+                            real_t tnytol, real_t fpresn, real_t xbnd,
+                            real_t *u, real_t *fu, real_t *gu,
+                            real_t *xmin, real_t *fmin, real_t *gmin,
+                            real_t *xw, real_t *fw, real_t *gw, real_t *a,
+                            real_t *b, real_t *oldf, real_t *b1,
+                            real_t *scxbnd, real_t *e, real_t *step,
+                            real_t *factor, logical * braktd,
+                            real_t *gtest1, real_t *gtest2, real_t *tol);
 
-static void printCurrentIteration(int n, double f, double g[], int niter,
+static void printCurrentIteration(int n, real_t f, real_t g[], int niter,
                                   int nfeval, int pivot[]);
 
-static double initialStep(double fnew, double fmin, double gtp,
-                          double smax);
+static real_t initialStep(real_t fnew, real_t fmin, real_t gtp,
+                          real_t smax);
 
 static ls_rc linearSearch(int n, tnc_function * function, void *state,
-                          double low[], double up[],
-                          double xscale[], double xoffset[], double fscale,
-                          int pivot[], double eta, double ftol,
-                          double xbnd, double p[], double x[], double *f,
-                          double *alpha, double gfull[], int maxnfeval,
-                          int *nfeval, double *restrict buffer);
+                          real_t low[], real_t up[],
+                          real_t xscale[], real_t xoffset[], real_t fscale,
+                          int pivot[], real_t eta, real_t ftol,
+                          real_t xbnd, real_t p[], real_t x[], real_t *f,
+                          real_t *alpha, real_t gfull[], int maxnfeval,
+                          int *nfeval, real_t *restrict buffer);
 
-static int tnc_direction(double *zsol, double *diagb,
-                         double *x, double *g, int n,
+static int tnc_direction(real_t *zsol, real_t *diagb,
+                         real_t *x, real_t *g, int n,
                          int maxCGit, int maxnfeval, int *nfeval,
-                         logical upd1, double yksk, double yrsr,
-                         double *sk, double *yk, double *sr, double *yr,
+                         logical upd1, real_t yksk, real_t yrsr,
+                         real_t *sk, real_t *yk, real_t *sr, real_t *yr,
                          logical lreset, tnc_function * function,
-                         void *state, double xscale[], double xoffset[],
-                         double fscale, int *pivot, double accuracy,
-                         double gnorm, double xnorm, double *low,
-                         double *up, double *restrict buffer);
+                         void *state, real_t xscale[], real_t xoffset[],
+                         real_t fscale, int *pivot, real_t accuracy,
+                         real_t gnorm, real_t xnorm, real_t *low,
+                         real_t *up, real_t *restrict buffer);
 
-static double stepMax(double step, int n, double *restrict x, double *restrict dir,
-                      int *restrict pivot, double *restrict low, double *restrict up,
-                      double *restrict xscale, double *restrict xoffset);
+static real_t stepMax(real_t step, int n, real_t *restrict x, real_t *restrict dir,
+                      int *restrict pivot, real_t *restrict low, real_t *restrict up,
+                      real_t *restrict xscale, real_t *restrict xoffset);
 
 /* Active set of constraints */
-static void setConstraints(int n, double *restrict x, int pivot[], double *restrict xscale,
-                           double *restrict xoffset, double *restrict low, double *restrict up);
+static void setConstraints(int n, real_t *restrict x, int pivot[], real_t *restrict xscale,
+                           real_t *restrict xoffset, real_t *restrict low, real_t *restrict up);
 
-static logical addConstraint(int n, double *restrict x, double *restrict p, int pivot[],
-                             double *restrict low, double *restrict up, double *restrict xscale,
-                             double *restrict xoffset);
+static logical addConstraint(int n, real_t *restrict x, real_t *restrict p, int pivot[],
+                             real_t *restrict low, real_t *restrict up, real_t *restrict xscale,
+                             real_t *restrict xoffset);
 
-static logical removeConstraint(double gtpnew, double gnorm,
-                                double pgtolfs, double f,
-                                double fLastConstraint, double g[],
+static logical removeConstraint(real_t gtpnew, real_t gnorm,
+                                real_t pgtolfs, real_t f,
+                                real_t fLastConstraint, real_t g[],
                                 int pivot[], int n);
 
-static void project(int n, double x[], const int pivot[]);
+static void project(int n, real_t x[], const int pivot[]);
 
-static int hessianTimesVector(double v[], double gv[], int n,
-                              double x[], double g[],
+static int hessianTimesVector(real_t v[], real_t gv[], int n,
+                              real_t x[], real_t g[],
                               tnc_function * function, void *state,
-                              double xscale[], double xoffset[],
-                              double fscale, double accuracy, double xnorm,
-                              double low[], double up[],
-                              double *restrict buffer);
+                              real_t xscale[], real_t xoffset[],
+                              real_t fscale, real_t accuracy, real_t xnorm,
+                              real_t low[], real_t up[],
+                              real_t *restrict buffer);
 
-static int msolve(double g[], double *y, int n,
-                  double sk[], double yk[], double diagb[], double sr[],
-                  double yr[], logical upd1, double yksk, double yrsr,
-                  logical lreset, double *restrict buffer);
+static int msolve(real_t g[], real_t *y, int n,
+                  real_t sk[], real_t yk[], real_t diagb[], real_t sr[],
+                  real_t yr[], logical upd1, real_t yksk, real_t yrsr,
+                  logical lreset, real_t *restrict buffer);
 
-static void diagonalScaling(int n, double e[], double v[], double gv[],
-                            double r[]);
+static void diagonalScaling(int n, real_t e[], real_t v[], real_t gv[],
+                            real_t r[]);
 
-static void ssbfgs(int n, double gamma, double *restrict sj, double *restrict hjv,
-                   double *restrict hjyj, double yjsj,
-                   double yjhyj, double vsj, double vhyj, double *restrict hjp1v);
-static void ssbfgs2(int n, double gamma, double *restrict sj, double *restrict hjv,
-                   double *restrict hjyj, double yjsj,
-                   double yjhyj, double vsj, double vhyj);
+static void ssbfgs(int n, real_t gamma, real_t *restrict sj, real_t *restrict hjv,
+                   real_t *restrict hjyj, real_t yjsj,
+                   real_t yjhyj, real_t vsj, real_t vhyj, real_t *restrict hjp1v);
+static void ssbfgs2(int n, real_t gamma, real_t *restrict sj, real_t *restrict hjv,
+                   real_t *restrict hjyj, real_t yjsj,
+                   real_t yjhyj, real_t vsj, real_t vhyj);
 
-static int initPreconditioner(double diagb[], double emat[], int n,
-                              logical lreset, double yksk, double yrsr,
-                              double sk[], double yk[], double sr[],
-                              double yr[], logical upd1,
-                              double *restrict buffer);
+static int initPreconditioner(real_t diagb[], real_t emat[], int n,
+                              logical lreset, real_t yksk, real_t yrsr,
+                              real_t sk[], real_t yk[], real_t sr[],
+                              real_t yr[], logical upd1,
+                              real_t *restrict buffer);
 
 /* Scaling */
-static void coercex(int n, double *restrict x, const double *restrict low, const double *restrict up);
-static void unscalex(int n, double *restrict x, const double *restrict xscale,
-                     const double *restrict xoffset);
-static void scaleg(int n, double *restrict g, const double *restrict xscale, double fscale);
-static void scalex(int n, double *restrict x, const double *restrict xscale,
-                   const double *restrict xoffset);
-static void projectConstants(int n, double x[], const double xscale[]);
+static void coercex(int n, real_t *restrict x, const real_t *restrict low, const real_t *restrict up);
+static void unscalex(int n, real_t *restrict x, const real_t *restrict xscale,
+                     const real_t *restrict xoffset);
+static void scaleg(int n, real_t *restrict g, const real_t *restrict xscale, real_t fscale);
+static void scalex(int n, real_t *restrict x, const real_t *restrict xscale,
+                   const real_t *restrict xoffset);
+static void projectConstants(int n, real_t x[], const real_t xscale[]);
 
 /* Special blas for incx=incy=1 */
-static double ddot1(int n, const double dx[], const double dy[]);
-static void dxpy1(int n, const double dx[], double dy[]);
-static void daxpy1(int n, double da, const double dx[], double dy[]);
-static void dcopy1(int n, const double dx[], double dy[]);
-static double dnrm21(int n, const double dx[]);
+static real_t ddot1(int n, const real_t dx[], const real_t dy[]);
+static void dxpy1(int n, const real_t dx[], real_t dy[]);
+static void daxpy1(int n, real_t da, const real_t dx[], real_t dy[]);
+static void dcopy1(int n, const real_t dx[], real_t dy[]);
+static real_t dnrm21(int n, const real_t dx[]);
 
 /* additional blas-like functions */
-static void dneg1(int n, double v[]);
+static void dneg1(int n, real_t v[]);
 
 /*
  * This routine solves the optimization problem
@@ -247,18 +242,18 @@ static void dneg1(int n, double v[]);
  * especially useful when the number of variables (n) is large.
  *
  */
-int tnc(int n, double x[], double *f, double g[], tnc_function * function,
-        void *state, double low[], double up[], double scale[],
-        double offset[], int messages, int maxCGit, int maxnfeval,
-        double eta, double stepmx, double accuracy, double fmin,
-        double ftol, double xtol, double pgtol, double rescale,
+int tnc(int n, real_t x[], real_t *f, real_t g[], tnc_function * function,
+        void *state, real_t low[], real_t up[], real_t scale[],
+        real_t offset[], int messages, int maxCGit, int maxnfeval,
+        real_t eta, real_t stepmx, real_t accuracy, real_t fmin,
+        real_t ftol, real_t xtol, real_t pgtol, real_t rescale,
         int *nfeval, int *niter,
-        double *restrict buffer, int *restrict buffer_int)
+        real_t *restrict buffer, int *restrict buffer_int)
 {
     // int rc, frc, i, nc, nfeval_local, free_low = TNC_FALSE,
     int rc, frc, i, nfeval_local, free_low = TNC_FALSE,
         free_up = TNC_FALSE, free_g = TNC_FALSE;
-    double *restrict xscale = NULL, fscale, rteps, *restrict xoffset = NULL;
+    real_t *restrict xscale = NULL, fscale, rteps, *restrict xoffset = NULL;
 
     if (nfeval == NULL) {
         /* Ignore nfeval */
@@ -279,7 +274,7 @@ int tnc(int n, double x[], double *f, double g[], tnc_function * function,
 
     /* Check bounds arrays */
     if (low == NULL) {
-        low = (double*)malloc(n * sizeof(*low));
+        low = (real_t*)malloc(n * sizeof(*low));
         if (low == NULL) {
             rc = TNC_ENOMEM;
             goto cleanup;
@@ -291,7 +286,7 @@ int tnc(int n, double x[], double *f, double g[], tnc_function * function,
     }
 
     if (up == NULL) {
-        up = (double*)malloc(n * sizeof(*up));
+        up = (real_t*)malloc(n * sizeof(*up));
         if (up == NULL) {
             rc = TNC_ENOMEM;
             goto cleanup;
@@ -320,7 +315,7 @@ int tnc(int n, double x[], double *f, double g[], tnc_function * function,
 
     /* Allocate g if necessary */
     if (g == NULL) {
-        g = (double*)malloc(n * sizeof(*g));
+        g = (real_t*)malloc(n * sizeof(*g));
         if (g == NULL) {
             rc = TNC_ENOMEM;
             goto cleanup;
@@ -350,7 +345,7 @@ int tnc(int n, double x[], double *f, double g[], tnc_function * function,
 
     /* Scaling parameters */
     if (buffer == NULL)
-        xscale = (double*)malloc(sizeof(*xscale) * n);
+        xscale = (real_t*)malloc(sizeof(*xscale) * n);
     else {
         xscale = buffer;
         buffer += n;
@@ -360,7 +355,7 @@ int tnc(int n, double x[], double *f, double g[], tnc_function * function,
         goto cleanup;
     }
     if (buffer == NULL)
-        xoffset = (double*)malloc(sizeof(*xoffset) * n);
+        xoffset = (real_t*)malloc(sizeof(*xoffset) * n);
     else {
         xoffset = buffer;
         buffer += n;
@@ -454,7 +449,7 @@ int tnc(int n, double x[], double *f, double g[], tnc_function * function,
 }
 
 /* Coerce x into bounds */
-static void coercex(int n, double *restrict x, const double *restrict low, const double *restrict up)
+static void coercex(int n, real_t *restrict x, const real_t *restrict low, const real_t *restrict up)
 {
     int i;
 
@@ -470,8 +465,8 @@ static void coercex(int n, double *restrict x, const double *restrict low, const
 }
 
 /* Unscale x */
-static void unscalex(int n, double *restrict x, const double *restrict xscale,
-                     const double *restrict xoffset)
+static void unscalex(int n, real_t *restrict x, const real_t *restrict xscale,
+                     const real_t *restrict xoffset)
 {
     int i;
     for (i = 0; i < n; i++) {
@@ -480,8 +475,8 @@ static void unscalex(int n, double *restrict x, const double *restrict xscale,
 }
 
 /* Scale x */
-static void scalex(int n, double *restrict x, const double *restrict xscale,
-                   const double *restrict xoffset)
+static void scalex(int n, real_t *restrict x, const real_t *restrict xscale,
+                   const real_t *restrict xoffset)
 {
     int i;
     for (i = 0; i < n; i++) {
@@ -492,7 +487,7 @@ static void scalex(int n, double *restrict x, const double *restrict xscale,
 }
 
 /* Scale g */
-static void scaleg(int n, double *restrict g, const double *restrict xscale, double fscale)
+static void scaleg(int n, real_t *restrict g, const real_t *restrict xscale, real_t fscale)
 {
     int i;
     for (i = 0; i < n; i++) {
@@ -501,8 +496,8 @@ static void scaleg(int n, double *restrict g, const double *restrict xscale, dou
 }
 
 /* Calculate the pivot vector */
-static void setConstraints(int n, double *restrict x, int pivot[], double *restrict xscale,
-                           double *restrict xoffset, double *restrict low, double *restrict up)
+static void setConstraints(int n, real_t *restrict x, int pivot[], real_t *restrict xscale,
+                           real_t *restrict xoffset, real_t *restrict low, real_t *restrict up)
 {
     int i;
 
@@ -534,23 +529,23 @@ static void setConstraints(int n, double *restrict x, int pivot[], double *restr
  * in this routine) with a further diagonal scaling
  * (see routine diagonalscaling).
  */
-static tnc_rc tnc_minimize(int n, double x[],
-                           double *f, double gfull[],
+static tnc_rc tnc_minimize(int n, real_t x[],
+                           real_t *f, real_t gfull[],
                            tnc_function * function, void *state,
-                           double xscale[], double xoffset[],
-                           double *fscale, double low[], double up[],
+                           real_t xscale[], real_t xoffset[],
+                           real_t *fscale, real_t low[], real_t up[],
                            tnc_message messages, int maxCGit,
                            int maxnfeval, int *nfeval, int *niter,
-                           double eta, double stepmx, double accuracy,
-                           double fmin, double ftol, double xtol,
-                           double pgtol, double rescale,
-                           double *restrict buffer, int *restrict buffer_int)
+                           real_t eta, real_t stepmx, real_t accuracy,
+                           real_t fmin, real_t ftol, real_t xtol,
+                           real_t pgtol, real_t rescale,
+                           real_t *restrict buffer, int *restrict buffer_int)
 {
-    double fLastReset, difnew, epsred, oldgtp, difold, oldf, xnorm, newscale,
+    real_t fLastReset, difnew, epsred, oldgtp, difold, oldf, xnorm, newscale,
         gnorm, ustpmax, fLastConstraint, spe, yrsr, yksk,
         *temp = NULL, *sk = NULL, *yk = NULL, *diagb = NULL, *sr = NULL,
         *yr = NULL, *oldg = NULL, *pk = NULL, *g = NULL;
-    double alpha = 0.0;         /* Default unused value */
+    real_t alpha = 0.0;         /* Default unused value */
     int i, icycle, oldnfeval, *pivot = NULL, frc;
     logical lreset, newcon, upd1, remcon;
     tnc_rc rc = TNC_ENOMEM;     /* Default error */
@@ -560,40 +555,40 @@ static tnc_rc tnc_minimize(int n, double x[],
     /* Allocate temporary vectors */
     if (buffer == NULL)
     {
-        oldg = (double*)malloc(sizeof(*oldg) * n);
+        oldg = (real_t*)malloc(sizeof(*oldg) * n);
         if (oldg == NULL) {
             goto cleanup;
         }
-        g = (double*)malloc(sizeof(*g) * n);
+        g = (real_t*)malloc(sizeof(*g) * n);
         if (g == NULL) {
             goto cleanup;
         }
-        temp = (double*)malloc(sizeof(*temp) * n);
+        temp = (real_t*)malloc(sizeof(*temp) * n);
         if (temp == NULL) {
             goto cleanup;
         }
-        diagb = (double*)malloc(sizeof(*diagb) * n);
+        diagb = (real_t*)malloc(sizeof(*diagb) * n);
         if (diagb == NULL) {
             goto cleanup;
         }
-        pk = (double*)malloc(sizeof(*pk) * n);
+        pk = (real_t*)malloc(sizeof(*pk) * n);
         if (pk == NULL) {
             goto cleanup;
         }
 
-        sk = (double*)malloc(sizeof(*sk) * n);
+        sk = (real_t*)malloc(sizeof(*sk) * n);
         if (sk == NULL) {
             goto cleanup;
         }
-        yk = (double*)malloc(sizeof(*yk) * n);
+        yk = (real_t*)malloc(sizeof(*yk) * n);
         if (yk == NULL) {
             goto cleanup;
         }
-        sr = (double*)malloc(sizeof(*sr) * n);
+        sr = (real_t*)malloc(sizeof(*sr) * n);
         if (sr == NULL) {
             goto cleanup;
         }
-        yr = (double*)malloc(sizeof(*yr) * n);
+        yr = (real_t*)malloc(sizeof(*yr) * n);
         if (yr == NULL) {
             goto cleanup;
         }
@@ -976,11 +971,11 @@ static tnc_rc tnc_minimize(int n, double x[],
 }
 
 /* Print the results of the current iteration */
-static void printCurrentIteration(int n, double f, double g[], int niter,
+static void printCurrentIteration(int n, real_t f, real_t g[], int niter,
                                   int nfeval, int pivot[])
 {
     int i;
-    double gtg;
+    real_t gtg;
 
     gtg = 0.0;
     for (i = 0; i < n; i++) {
@@ -995,7 +990,7 @@ static void printCurrentIteration(int n, double f, double g[], int niter,
 /*
  * Set x[i] = 0.0 if direction i is currently constrained
  */
-static void project(int n, double x[], const int pivot[])
+static void project(int n, real_t x[], const int pivot[])
 {
     int i;
     for (i = 0; i < n; i++) {
@@ -1008,7 +1003,7 @@ static void project(int n, double x[], const int pivot[])
 /*
  * Set x[i] = 0.0 if direction i is constant
  */
-static void projectConstants(int n, double x[], const double xscale[])
+static void projectConstants(int n, real_t x[], const real_t xscale[])
 {
     int i;
     for (i = 0; i < n; i++) {
@@ -1021,12 +1016,12 @@ static void projectConstants(int n, double x[], const double xscale[])
 /*
  * Compute the maximum allowable step length
  */
-static double stepMax(double step, int n, double *restrict x, double *restrict dir,
-                      int *restrict pivot, double *restrict low, double *restrict up,
-                      double *restrict xscale, double *restrict xoffset)
+static real_t stepMax(real_t step, int n, real_t *restrict x, real_t *restrict dir,
+                      int *restrict pivot, real_t *restrict low, real_t *restrict up,
+                      real_t *restrict xscale, real_t *restrict xoffset)
 {
     int i;
-    double t;
+    real_t t;
 
     /* Constrained maximum step */
     for (i = 0; i < n; i++) {
@@ -1052,12 +1047,12 @@ static double stepMax(double step, int n, double *restrict x, double *restrict d
 /*
  * Update the constraint vector pivot if a new constraint is encountered
  */
-static logical addConstraint(int n, double *restrict x, double *restrict p, int pivot[],
-                             double *restrict low, double *restrict up, double *restrict xscale,
-                             double *restrict xoffset)
+static logical addConstraint(int n, real_t *restrict x, real_t *restrict p, int pivot[],
+                             real_t *restrict low, real_t *restrict up, real_t *restrict xscale,
+                             real_t *restrict xoffset)
 {
     int i, newcon = TNC_FALSE;
-    double tol;
+    real_t tol;
 
     for (i = 0; i < n; i++) {
         if ((pivot[i] == 0) && (p[i] != 0.0)) {
@@ -1093,12 +1088,12 @@ static logical addConstraint(int n, double *restrict x, double *restrict p, int 
 /*
  * Check if a constraint is no more active
  */
-static logical removeConstraint(double gtpnew, double gnorm,
-                                double pgtolfs, double f,
-                                double fLastConstraint, double g[],
+static logical removeConstraint(real_t gtpnew, real_t gnorm,
+                                real_t pgtolfs, real_t f,
+                                real_t fLastConstraint, real_t g[],
                                 int pivot[], int n)
 {
-    double cmax, t;
+    real_t cmax, t;
     int imax, i;
 
     if (((fLastConstraint - f) <= (gtpnew * -0.5)) && (gnorm > pgtolfs)) {
@@ -1142,22 +1137,22 @@ static logical removeConstraint(double gtpnew, double gnorm,
  * When the value of the quadratic model is sufficiently reduced,
  * the iteration is terminated.
  */
-static int tnc_direction(double *zsol, double *diagb,
-                         double *x, double *restrict g, int n,
+static int tnc_direction(real_t *zsol, real_t *diagb,
+                         real_t *x, real_t *restrict g, int n,
                          int maxCGit, int maxnfeval, int *nfeval,
-                         logical upd1, double yksk, double yrsr,
-                         double *sk, double *yk, double *sr, double *yr,
+                         logical upd1, real_t yksk, real_t yrsr,
+                         real_t *sk, real_t *yk, real_t *sr, real_t *yr,
                          logical lreset, tnc_function * function,
-                         void *state, double *restrict xscale, double *restrict xoffset,
-                         double fscale, int *pivot, double accuracy,
-                         double gnorm, double xnorm, double *restrict low,
-                         double *restrict up, double *restrict buffer)
+                         void *state, real_t *restrict xscale, real_t *restrict xoffset,
+                         real_t fscale, int *pivot, real_t accuracy,
+                         real_t gnorm, real_t xnorm, real_t *restrict low,
+                         real_t *restrict up, real_t *restrict buffer)
 {
-    double alpha, beta, qold, qnew, rhsnrm, tol, vgv, rz, rzold, qtest, pr,
+    real_t alpha, beta, qold, qnew, rhsnrm, tol, vgv, rz, rzold, qtest, pr,
         gtp;
     int i, k, frc;
     /* Temporary vectors */
-    double *restrict r = NULL, *restrict zk = NULL, *restrict v = NULL, *restrict emat = NULL, *restrict gv = NULL;
+    real_t *restrict r = NULL, *restrict zk = NULL, *restrict v = NULL, *restrict emat = NULL, *restrict gv = NULL;
 
     /* No CG it. => dir = -grad */
     if (maxCGit == 0) {
@@ -1176,23 +1171,23 @@ static int tnc_direction(double *zsol, double *diagb,
     frc = -1;                   /* ENOMEM here */
     if (buffer == NULL)
     {
-        r = (double*)malloc(sizeof(*r) * n); /* Residual */
+        r = (real_t*)malloc(sizeof(*r) * n); /* Residual */
         if (r == NULL) {
             goto cleanup;
         }
-        v = (double*)malloc(sizeof(*v) * n);
+        v = (real_t*)malloc(sizeof(*v) * n);
         if (v == NULL) {
             goto cleanup;
         }
-        zk = (double*)malloc(sizeof(*zk) * n);
+        zk = (real_t*)malloc(sizeof(*zk) * n);
         if (zk == NULL) {
             goto cleanup;
         }
-        emat = (double*)malloc(sizeof(*emat) * n);   /* Diagonal preconditoning matrix */
+        emat = (real_t*)malloc(sizeof(*emat) * n);   /* Diagonal preconditoning matrix */
         if (emat == NULL) {
             goto cleanup;
         }
-        gv = (double*)malloc(sizeof(*gv) * n);       /* hessian times v */
+        gv = (real_t*)malloc(sizeof(*gv) * n);       /* hessian times v */
         if (gv == NULL) {
             goto cleanup;
         }
@@ -1327,11 +1322,11 @@ static int tnc_direction(double *zsol, double *diagb,
  * Update the preconditioning matrix based on a diagonal version
  * of the bfgs quasi-newton update.
  */
-static void diagonalScaling(int n, double *restrict e, double *restrict v, double *restrict gv,
-                            double *restrict r)
+static void diagonalScaling(int n, real_t *restrict e, real_t *restrict v, real_t *restrict gv,
+                            real_t *restrict r)
 {
     int i;
-    double vr, vgv;
+    real_t vr, vgv;
 
     vr = 1.0 / ddot1(n, v, r);
     vgv = 1.0 / ddot1(n, v, gv);
@@ -1348,10 +1343,10 @@ static void diagonalScaling(int n, double *restrict e, double *restrict v, doubl
  * Returns the length of the initial step to be taken along the
  * vector p in the next linear search.
  */
-static double initialStep(double fnew, double fmin, double gtp,
-                          double smax)
+static real_t initialStep(real_t fnew, real_t fmin, real_t gtp,
+                          real_t smax)
 {
-    double d, alpha;
+    real_t d, alpha;
 
     d = fabs(fnew - fmin);
     alpha = 1.0;
@@ -1368,20 +1363,20 @@ static double initialStep(double fnew, double fmin, double gtp,
 /*
  * Hessian vector product through finite differences
  */
-static int hessianTimesVector(double *restrict v, double *restrict gv, int n,
-                              double *restrict x, double *restrict g,
+static int hessianTimesVector(real_t *restrict v, real_t *restrict gv, int n,
+                              real_t *restrict x, real_t *restrict g,
                               tnc_function * function, void *state,
-                              double xscale[], double xoffset[],
-                              double fscale, double accuracy, double xnorm,
-                              double low[], double up[],
-                              double *restrict buffer)
+                              real_t xscale[], real_t xoffset[],
+                              real_t fscale, real_t accuracy, real_t xnorm,
+                              real_t low[], real_t up[],
+                              real_t *restrict buffer)
 {
-    double dinv, f, delta, *xv;
+    real_t dinv, f, delta, *xv;
     int i, frc;
 
     if (buffer == NULL)
     {
-        xv = (double*)malloc(sizeof(*xv) * n);
+        xv = (real_t*)malloc(sizeof(*xv) * n);
         if (xv == NULL) {
             return -1;
         }
@@ -1424,14 +1419,14 @@ static int hessianTimesVector(double *restrict v, double *restrict gv, int n,
  * gradient for the non-linear conjugate-gradient code.
  * It represents a two-step self-scaled bfgs formula.
  */
-static int msolve(double *restrict g, double *restrict y, int n,
-                  double *restrict sk, double *restrict yk, double *restrict diagb, double *restrict sr,
-                  double *restrict yr, logical upd1, double yksk, double yrsr,
-                  logical lreset, double *restrict buffer)
+static int msolve(real_t *restrict g, real_t *restrict y, int n,
+                  real_t *restrict sk, real_t *restrict yk, real_t *restrict diagb, real_t *restrict sr,
+                  real_t *restrict yr, logical upd1, real_t yksk, real_t yrsr,
+                  logical lreset, real_t *restrict buffer)
 {
-    double ghyk, ghyr, yksr, ykhyk, ykhyr, yrhyr, rdiagb, gsr, gsk;
+    real_t ghyk, ghyr, yksr, ykhyk, ykhyr, yrhyr, rdiagb, gsr, gsk;
     int i, frc;
-    double *restrict hg = NULL, *restrict hyk = NULL, *restrict hyr = NULL;
+    real_t *restrict hg = NULL, *restrict hyk = NULL, *restrict hyr = NULL;
 
     if (upd1) {
         for (i = 0; i < n; i++) {
@@ -1444,15 +1439,15 @@ static int msolve(double *restrict g, double *restrict y, int n,
     gsk = ddot1(n, g, sk);
     if (buffer == NULL)
     {
-        hg = (double*)malloc(sizeof(*hg) * n);
+        hg = (real_t*)malloc(sizeof(*hg) * n);
         if (hg == NULL) {
             goto cleanup;
         }
-        hyr = (double*)malloc(sizeof(*hyr) * n);
+        hyr = (real_t*)malloc(sizeof(*hyr) * n);
         if (hyr == NULL) {
             goto cleanup;
         }
-        hyk = (double*)malloc(sizeof(*hyk) * n);
+        hyk = (real_t*)malloc(sizeof(*hyk) * n);
         if (hyk == NULL) {
             goto cleanup;
         }
@@ -1513,11 +1508,11 @@ static int msolve(double *restrict g, double *restrict y, int n,
 /*
  * Self-scaled BFGS
  */
-static void ssbfgs(int n, double gamma, double *restrict sj, double *restrict hjv,
-                   double *restrict hjyj, double yjsj,
-                   double yjhyj, double vsj, double vhyj, double *restrict hjp1v)
+static void ssbfgs(int n, real_t gamma, real_t *restrict sj, real_t *restrict hjv,
+                   real_t *restrict hjyj, real_t yjsj,
+                   real_t yjhyj, real_t vsj, real_t vhyj, real_t *restrict hjp1v)
 {
-    double beta, delta;
+    real_t beta, delta;
     int i;
 
     if (yjsj == 0.0) {
@@ -1535,11 +1530,11 @@ static void ssbfgs(int n, double gamma, double *restrict sj, double *restrict hj
     }
 }
 
-static void ssbfgs2(int n, double gamma, double *restrict sj, double *restrict hjv,
-                   double *restrict hjyj, double yjsj,
-                   double yjhyj, double vsj, double vhyj)
+static void ssbfgs2(int n, real_t gamma, real_t *restrict sj, real_t *restrict hjv,
+                   real_t *restrict hjyj, real_t yjsj,
+                   real_t yjhyj, real_t vsj, real_t vhyj)
 {
-    double beta, delta;
+    real_t beta, delta;
     int i;
 
     if (yjsj == 0.0) {
@@ -1560,15 +1555,15 @@ static void ssbfgs2(int n, double gamma, double *restrict sj, double *restrict h
 /*
  * Initialize the preconditioner
  */
-static int initPreconditioner(double *restrict diagb, double *restrict emat, int n,
-                              logical lreset, double yksk, double yrsr,
-                              double *restrict sk, double *restrict yk, double *restrict sr,
-                              double *restrict yr, logical upd1,
-                              double *restrict buffer)
+static int initPreconditioner(real_t *restrict diagb, real_t *restrict emat, int n,
+                              logical lreset, real_t yksk, real_t yrsr,
+                              real_t *restrict sk, real_t *restrict yk, real_t *restrict sr,
+                              real_t *restrict yr, logical upd1,
+                              real_t *restrict buffer)
 {
-    double srds, yrsk, td, sds;
+    real_t srds, yrsk, td, sds;
     int i;
-    double *restrict bsk;
+    real_t *restrict bsk;
 
     if (upd1) {
         dcopy1(n, diagb, emat);
@@ -1577,7 +1572,7 @@ static int initPreconditioner(double *restrict diagb, double *restrict emat, int
 
     if (buffer == NULL)
     {
-        bsk = (double*)malloc(sizeof(*bsk) * n);
+        bsk = (real_t*)malloc(sizeof(*bsk) * n);
         if (bsk == NULL) {
             return -1;
         }
@@ -1645,17 +1640,17 @@ static int initPreconditioner(double *restrict diagb, double *restrict emat, int
  * Line search algorithm of gill and murray
  */
 static ls_rc linearSearch(int n, tnc_function * function, void *state,
-                          double low[], double up[],
-                          double xscale[], double xoffset[], double fscale,
-                          int pivot[], double eta, double ftol,
-                          double xbnd, double p[], double x[], double *f,
-                          double *alpha, double gfull[], int maxnfeval,
-                          int *nfeval, double *restrict buffer)
+                          real_t low[], real_t up[],
+                          real_t xscale[], real_t xoffset[], real_t fscale,
+                          int pivot[], real_t eta, real_t ftol,
+                          real_t xbnd, real_t p[], real_t x[], real_t *f,
+                          real_t *alpha, real_t gfull[], int maxnfeval,
+                          int *nfeval, real_t *restrict buffer)
 {
-    double b1, big, tol, rmu, fpresn, fu, gu, fw, gw, gtest1, gtest2,
+    real_t b1, big, tol, rmu, fpresn, fu, gu, fw, gw, gtest1, gtest2,
         oldf, fmin, gmin, rtsmll, step, a, b, e, u, ualpha, factor, scxbnd,
         xw, reltol, abstol, tnytol, pe, xnorm, rteps;
-    double *temp = NULL, *tempgfull = NULL, *newgfull = NULL;
+    real_t *temp = NULL, *tempgfull = NULL, *newgfull = NULL;
     int maxlsit = 64, i, itcnt, frc;
     ls_rc rc;
     getptc_rc itest;
@@ -1664,15 +1659,15 @@ static ls_rc linearSearch(int n, tnc_function * function, void *state,
     rc = LS_ENOMEM;
     if (buffer == NULL)
     {
-        temp = (double*)malloc(sizeof(*temp) * n);
+        temp = (real_t*)malloc(sizeof(*temp) * n);
         if (temp == NULL) {
             goto cleanup;
         }
-        tempgfull = (double*)malloc(sizeof(*tempgfull) * n);
+        tempgfull = (real_t*)malloc(sizeof(*tempgfull) * n);
         if (tempgfull == NULL) {
             goto cleanup;
         }
-        newgfull = (double*)malloc(sizeof(*newgfull) * n);
+        newgfull = (real_t*)malloc(sizeof(*newgfull) * n);
         if (newgfull == NULL) {
             goto cleanup;
         }
@@ -1802,15 +1797,15 @@ static ls_rc linearSearch(int n, tnc_function * function, void *state,
  * in which a lower point is to be found and from this getptc computes a
  * point at which the function can be evaluated by the calling program.
  */
-static getptc_rc getptcInit(double *reltol, double *abstol, double tnytol,
-                            double eta, double rmu, double xbnd,
-                            double *u, double *fu, double *gu,
-                            double *xmin, double *fmin, double *gmin,
-                            double *xw, double *fw, double *gw, double *a,
-                            double *b, double *oldf, double *b1,
-                            double *scxbnd, double *e, double *step,
-                            double *factor, logical * braktd,
-                            double *gtest1, double *gtest2, double *tol)
+static getptc_rc getptcInit(real_t *reltol, real_t *abstol, real_t tnytol,
+                            real_t eta, real_t rmu, real_t xbnd,
+                            real_t *u, real_t *fu, real_t *gu,
+                            real_t *xmin, real_t *fmin, real_t *gmin,
+                            real_t *xw, real_t *fw, real_t *gw, real_t *a,
+                            real_t *b, real_t *oldf, real_t *b1,
+                            real_t *scxbnd, real_t *e, real_t *step,
+                            real_t *factor, logical * braktd,
+                            real_t *gtest1, real_t *gtest2, real_t *tol)
 {
     /* Check input parameters */
     if (*u <= 0.0 || xbnd <= tnytol || *gu > 0.0) {
@@ -1870,18 +1865,18 @@ static getptc_rc getptcInit(double *reltol, double *abstol, double tnytol,
     return GETPTC_EVAL;
 }
 
-static getptc_rc getptcIter(double big, double
-                            rtsmll, double *reltol, double *abstol,
-                            double tnytol, double fpresn, double xbnd,
-                            double *u, double *fu, double *gu,
-                            double *xmin, double *fmin, double *gmin,
-                            double *xw, double *fw, double *gw, double *a,
-                            double *b, double *oldf, double *b1,
-                            double *scxbnd, double *e, double *step,
-                            double *factor, logical * braktd,
-                            double *gtest1, double *gtest2, double *tol)
+static getptc_rc getptcIter(real_t big, real_t
+                            rtsmll, real_t *reltol, real_t *abstol,
+                            real_t tnytol, real_t fpresn, real_t xbnd,
+                            real_t *u, real_t *fu, real_t *gu,
+                            real_t *xmin, real_t *fmin, real_t *gmin,
+                            real_t *xw, real_t *fw, real_t *gw, real_t *a,
+                            real_t *b, real_t *oldf, real_t *b1,
+                            real_t *scxbnd, real_t *e, real_t *step,
+                            real_t *factor, logical * braktd,
+                            real_t *gtest1, real_t *gtest2, real_t *tol)
 {
-    double abgw, absr, p, q, r, s, scale, denom,
+    real_t abgw, absr, p, q, r, s, scale, denom,
         a1, d1, d2, sumsq, abgmin, chordm, chordu, xmidpt, twotol;
     logical convrg;
 
@@ -2015,7 +2010,7 @@ static getptc_rc getptcIter(double big, double
                         p = absr * rtsmll;
                     }
                     if (s >= p) {
-                        double value = s / absr;
+                        real_t value = s / absr;
                         sumsq = 1.0 + value * value;
                     }
                     scale = absr;
@@ -2026,7 +2021,7 @@ static getptc_rc getptcIter(double big, double
                         p = s * rtsmll;
                     }
                     if (absr >= p) {
-                        double value = absr / s;
+                        real_t value = absr / s;
                         sumsq = 1.0 + value * value;
                     }
                     scale = s;
@@ -2140,26 +2135,26 @@ static getptc_rc getptcIter(double big, double
 /* Comment 2020: these were substituted with actual BLAS functions */
 
 /* dy+=dx */
-static void dxpy1(int n, const double dx[], double dy[])
+static void dxpy1(int n, const real_t dx[], real_t dy[])
 {
-    cblas_daxpy(n, 1., dx, 1, dy, 1);
+    cblas_taxpy(n, 1., dx, 1, dy, 1);
 }
 
 /* dy+=da*dx */
-static void daxpy1(int n, double da, const double dx[], double dy[])
+static void daxpy1(int n, real_t da, const real_t dx[], real_t dy[])
 {
-    cblas_daxpy(n, da, dx, 1, dy, 1);
+    cblas_taxpy(n, da, dx, 1, dy, 1);
 }
 
 /* Copy dx -> dy */
 /* Could use memcpy */
-static void dcopy1(int n, const double dx[], double dy[])
+static void dcopy1(int n, const real_t dx[], real_t dy[])
 {
-    memcpy(dy, dx, (size_t)n*sizeof(double));
+    memcpy(dy, dx, (size_t)n*sizeof(real_t));
 }
 
 /* Negate */
-static void dneg1(int n, double v[])
+static void dneg1(int n, real_t v[])
 {
     for (int i = 0; i < n; i++) {
         v[i] = -v[i];
@@ -2167,13 +2162,13 @@ static void dneg1(int n, double v[])
 }
 
 /* Dot product */
-static double ddot1(int n, const double dx[], const double dy[])
+static real_t ddot1(int n, const real_t dx[], const real_t dy[])
 {
-    return cblas_ddot(n, dx, 1, dy, 1);
+    return cblas_tdot(n, dx, 1, dy, 1);
 }
 
 /* Euclidian norm */
-static double dnrm21(int n, const double dx[])
+static real_t dnrm21(int n, const real_t dx[])
 {
-    return cblas_dnrm2(n, dx, 1);
+    return cblas_tnrm2(n, dx, 1);
 }

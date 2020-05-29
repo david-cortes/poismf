@@ -68,6 +68,8 @@
 #' over both matrices. If passing `'auto'`, will set it to 50 for TNCG,
 #' 25 for CG, and 10 for PG.
 #' @param maxupd Maximum number of updates to each user/item vector within an iteration.
+#' Note: for 'method=TNCG', this means maximum number of \bold{function
+#' evaluations} rather than number of updates, so it should be higher.
 #' You might also want to try decreasing this while increasing `niter`.
 #' For `method='pg'`, this will be taken as the actual number of updates,
 #' as it does not perform a line search like the other methods.

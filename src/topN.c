@@ -50,7 +50,7 @@ bool check_is_sorted(sparse_ix arr[], size_t n)
 /* Some sample C code for the quickselect algorithm, 
    taken from Numerical Recipes in C. */
 #define SWAP(a,b) temp=(a);(a)=(b);(b)=temp;
-void qs_argpartition(sparse_ix arr[], double values[], size_t n, size_t k)
+void qs_argpartition(sparse_ix arr[], real_t values[], size_t n, size_t k)
 {
     sparse_ix i,ir,j,l,mid;
     size_t a,temp;
@@ -98,21 +98,21 @@ int cmp_size_t(const void *a, const void *b)
     return *((sparse_ix*)a) - *((sparse_ix*)b);
 }
 
-double *ptr_double_glob = NULL;
-#pragma omp threadprivate(ptr_double_glob)
+real_t *ptr_real_t_glob = NULL;
+#pragma omp threadprivate(ptr_real_t_glob)
 int cmp_argsort(const void *a, const void *b)
 {
-    double v1 = ptr_double_glob[*((sparse_ix*)a)];
-    double v2 = ptr_double_glob[*((sparse_ix*)b)];
+    real_t v1 = ptr_real_t_glob[*((sparse_ix*)a)];
+    real_t v2 = ptr_real_t_glob[*((sparse_ix*)b)];
     return (v1 == v2)? 0 : ((v1 < v2)? 1 : -1);
 }
 
 int topN
 (
-    double *restrict a_vec, double *restrict B, int k,
+    real_t *restrict a_vec, real_t *restrict B, int k,
     sparse_ix *restrict include_ix, size_t n_include,
     sparse_ix *restrict exclude_ix, size_t n_exclude,
-    sparse_ix *restrict outp_ix, double *restrict outp_score,
+    sparse_ix *restrict outp_ix, real_t *restrict outp_score,
     size_t n_top, size_t n, int nthreads
 )
 {
@@ -136,7 +136,7 @@ int topN
                      (size_t)n_include :
                      ((exclude_ix == NULL)? (size_t)n : (size_t)(n-n_exclude) );
 
-    double *restrict buffer_scores = NULL;
+    real_t *restrict buffer_scores = NULL;
     sparse_ix *restrict buffer_ix = NULL;
     sparse_ix *restrict buffer_mask = NULL;
 
@@ -171,7 +171,7 @@ int topN
        an argsort with doubly-masked indices. */
     if (include_ix != NULL)
     {
-        buffer_scores = (double*)malloc((size_t)n_include*sizeof(double));
+        buffer_scores = (real_t*)malloc((size_t)n_include*sizeof(real_t));
         buffer_mask = (sparse_ix*)malloc((size_t)n_include*sizeof(sparse_ix));
         if (buffer_scores == NULL || buffer_mask == NULL) {
             retval = 1;
@@ -180,7 +180,7 @@ int topN
         #pragma omp parallel for schedule(static) num_threads(nthreads) \
                 shared(a_vec, B, k, n_include, include_ix, buffer_scores)
         for (ix = 0; ix < (sparse_ix)n_include; ix++) {
-            buffer_scores[ix] = cblas_ddot(k, a_vec, 1,
+            buffer_scores[ix] = cblas_tdot(k, a_vec, 1,
                                            B + (size_t)include_ix[ix] * (size_t)k, 1);
         }
         for (sparse_ix ix = 0; ix < (sparse_ix)n_include; ix++)
@@ -190,9 +190,9 @@ int topN
     /* Case 2: there is a large number of items to exclude.
        Here can also produce predictions only for the included ones
        and then make a full or partial argsort. */
-    else if (exclude_ix != NULL && (double)n_exclude > (double)n/20.)
+    else if (exclude_ix != NULL && (real_t)n_exclude > (real_t)n/20.)
     {
-        buffer_scores = (double*)malloc(n_take*sizeof(double));
+        buffer_scores = (real_t*)malloc(n_take*sizeof(real_t));
         buffer_mask = (sparse_ix*)malloc(n_take*sizeof(sparse_ix));
         if (buffer_scores == NULL || buffer_mask == NULL) {
             retval = 1;
@@ -203,7 +203,7 @@ int topN
         #pragma omp parallel for schedule(static) num_threads(nthreads) \
                 shared(a_vec, B, k, n_take, buffer_ix, buffer_scores)
         for (ix = 0; ix < (sparse_ix)n_take; ix++)
-            buffer_scores[ix] = cblas_ddot(k, a_vec, 1,
+            buffer_scores[ix] = cblas_tdot(k, a_vec, 1,
                                            B + (size_t)buffer_ix[ix] * (size_t)k, 1);
     }
 
@@ -212,22 +212,22 @@ int topN
        optimized BLAS gemv, but it's not memory-efficient) */
     else
     {
-        buffer_scores = (double*)malloc((size_t)n*sizeof(double));
+        buffer_scores = (real_t*)malloc((size_t)n*sizeof(real_t));
         if (buffer_scores == NULL) { retval = 1; goto cleanup; }
-        cblas_dgemv(CblasRowMajor, CblasNoTrans,
+        cblas_tgemv(CblasRowMajor, CblasNoTrans,
                     n, k,
                     1., B, k,
                     a_vec, 1,
                     0., buffer_scores, 1);
     }
 
-    /* If there is no double-mask for indices, do a partial argsort */
-    ptr_double_glob = buffer_scores;
+    /* If there is no real_t-mask for indices, do a partial argsort */
+    ptr_real_t_glob = buffer_scores;
     if (buffer_mask == NULL)
     {
         /* If the number of elements is very small, it's faster to
            make a full argsort, taking advantage of qsort's optimizations */
-        if (n_take <= 50 || n_take >= (double)n*0.75)
+        if (n_take <= 50 || n_take >= (real_t)n*0.75)
         {
             qsort(buffer_ix, n_take, sizeof(sparse_ix), cmp_argsort);
         }
@@ -245,7 +245,7 @@ int topN
     /* Otherwise, do a partial argsort with doubly-indexed arrays */
     else
     {
-        if (n_take <= 50 || n_take >= (double)n*0.75)
+        if (n_take <= 50 || n_take >= (real_t)n*0.75)
         {
             qsort(buffer_mask, n_take, sizeof(sparse_ix), cmp_argsort);
         }
@@ -259,7 +259,7 @@ int topN
         for (sparse_ix ix = 0; ix < (sparse_ix)n_top; ix++)
             outp_ix[ix] = buffer_ix[buffer_mask[ix]];
     }
-    ptr_double_glob = NULL;
+    ptr_real_t_glob = NULL;
 
     /* If scores were requested, need to also output those */
     if (outp_score != NULL)

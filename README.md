@@ -187,12 +187,13 @@ and are assumed to be in row-major order.
 Returns 0 if it succeeds, 1 if it runs out of memory.
 */
 #define sparse_ix size_t
+#define real_t double
 typedef enum Method {tncg = 1, cg = 2, pg = 3} Method;
 int run_poismf(
-    double *restrict A, double *restrict Xr, sparse_ix *restrict Xr_indptr, sparse_ix *restrict Xr_indices,
-    double *restrict B, double *restrict Xc, sparse_ix *restrict Xc_indptr, sparse_ix *restrict Xc_indices,
+    real_t *restrict A, real_t *restrict Xr, sparse_ix *restrict Xr_indptr, sparse_ix *restrict Xr_indices,
+    real_t *restrict B, real_t *restrict Xc, sparse_ix *restrict Xc_indptr, sparse_ix *restrict Xc_indices,
     const size_t dimA, const size_t dimB, const size_t k,
-    const double l2_reg, const double l1_reg, const double w_mult, double step_size,
+    const real_t l2_reg, const real_t l1_reg, const real_t w_mult, real_t step_size,
     const Method method, const bool limit_step, const size_t numiter, const size_t maxupd,
     const int nthreads)
 ```

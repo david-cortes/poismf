@@ -39,6 +39,9 @@
 #include <R_ext/Rdynload.h>
 #include <R.h>
 #include <Rinternals.h>
+#ifndef _FOR_R
+#define _FOR_R
+#endif
 #include "poismf.h"
 
 /* FORTRAN-BLAS -> CBLAS */

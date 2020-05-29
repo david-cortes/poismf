@@ -50,18 +50,6 @@
 extern "C" {
 #endif
 
-#ifdef __cplusplus
-    #if defined(__GNUG__) || defined(__GNUC__) || defined(_MSC_VER) || defined(__clang__) || defined(__INTEL_COMPILER)
-        #define restrict __restrict
-    #else
-        #define restrict 
-    #endif
-#elif defined(_MSC_VER)
-    #define restrict __restrict
-#elif !defined(__STDC_VERSION__) || (__STDC_VERSION__ < 199901L)
-    #define restrict 
-#endif
-
 /*
  * Verbosity level
  */
@@ -113,13 +101,13 @@ extern const char *const tnc_rc_string[11];
  * must returns 0 if no error occurs or 1 to immediately end the minimization.
  *
  */
-typedef int tnc_function(double *restrict x, double *restrict f, double *restrict g, void *state);
+typedef int tnc_function(real_t *restrict x, real_t *restrict f, real_t *restrict g, void *state);
 
 /*
  * A callback function accepting x as input parameter along with the state
  * pointer.
  */
-typedef void tnc_callback(double x[], void *state);
+typedef void tnc_callback(real_t x[], void *state);
 
 /*
  * tnc : minimize a function with variables subject to bounds, using
@@ -177,13 +165,13 @@ typedef void tnc_callback(double x[], void *state);
  * On output, x, f and g may be very slightly out of sync because of scaling.
  *
  */
-extern int tnc(int n, double x[], double *f, double g[],
+extern int tnc(int n, real_t x[], real_t *f, real_t g[],
   tnc_function *function, void *state,
-  double low[], double up[], double scale[], double offset[],
-  int messages, int maxCGit, int maxnfeval, double eta, double stepmx,
-  double accuracy, double fmin, double ftol, double xtol, double pgtol,
-  double rescale, int *nfeval, int *niter,
-  double *restrict buffer, int *restrict buffer_int);
+  real_t low[], real_t up[], real_t scale[], real_t offset[],
+  int messages, int maxCGit, int maxnfeval, real_t eta, real_t stepmx,
+  real_t accuracy, real_t fmin, real_t ftol, real_t xtol, real_t pgtol,
+  real_t rescale, int *nfeval, int *niter,
+  real_t *restrict buffer, int *restrict buffer_int);
 
 #ifdef __cplusplus
 }
