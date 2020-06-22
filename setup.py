@@ -27,29 +27,41 @@ class build_ext_subclass( build_ext_with_blas ):
                 # e.extra_compile_args += ["-ggdb"]
         build_ext_with_blas.build_extensions(self)
 
-
-setup(
-    name  = "poismf",
-    packages = ["poismf"],
-    author = 'David Cortes',
-    author_email = 'david.cortes.rivera@gmail.com',
-    url = 'https://github.com/david-cortes/poismf',
-    version = '0.2.3',
-    install_requires = ['numpy', 'pandas>=0.24', 'cython', 'findblas'],
-    description = 'Fast and memory-efficient Poisson factorization for sparse count matrices',
-    cmdclass = {'build_ext': build_ext_subclass},
-    ext_modules = [
-        Extension("poismf.c_funs_double",
-            sources=["poismf/cfuns_double.pyx",
-                     "src/poismf.c", "src/topN.c", "src/pred.c",
-                     "src/nonnegcg.c", "src/tnc.c"],
-            include_dirs=[numpy.get_include(), "src/"],
-            define_macros = [("_FOR_PYTHON", None)]),
-        Extension("poismf.c_funs_float",
-            sources=["poismf/cfuns_float.pyx",
-                     "src/poismf.c", "src/topN.c", "src/pred.c",
-                     "src/nonnegcg.c", "src/tnc.c"],
-            include_dirs=[numpy.get_include(), "src/"],
-            define_macros = [("_FOR_PYTHON", None), ("USE_FLOAT", None)])
-        ]
-    )
+from_rtd = os.environ.get('READTHEDOCS') == 'True'
+if not from_rtd:
+    setup(
+        name  = "poismf",
+        packages = ["poismf"],
+        author = 'David Cortes',
+        author_email = 'david.cortes.rivera@gmail.com',
+        url = 'https://github.com/david-cortes/poismf',
+        version = '0.2.3',
+        install_requires = ['numpy', 'pandas>=0.24', 'cython', 'findblas'],
+        description = 'Fast and memory-efficient Poisson factorization for sparse count matrices',
+        cmdclass = {'build_ext': build_ext_subclass},
+        ext_modules = [
+            Extension("poismf.c_funs_double",
+                sources=["poismf/cfuns_double.pyx",
+                         "src/poismf.c", "src/topN.c", "src/pred.c",
+                         "src/nonnegcg.c", "src/tnc.c"],
+                include_dirs=[numpy.get_include(), "src/"],
+                define_macros = [("_FOR_PYTHON", None)]),
+            Extension("poismf.c_funs_float",
+                sources=["poismf/cfuns_float.pyx",
+                         "src/poismf.c", "src/topN.c", "src/pred.c",
+                         "src/nonnegcg.c", "src/tnc.c"],
+                include_dirs=[numpy.get_include(), "src/"],
+                define_macros = [("_FOR_PYTHON", None), ("USE_FLOAT", None)])
+            ]
+        )
+else:
+    setup(
+        name  = "poismf",
+        packages = ["poismf"],
+        author = 'David Cortes',
+        author_email = 'david.cortes.rivera@gmail.com',
+        url = 'https://github.com/david-cortes/poismf',
+        version = '0.2.3',
+        install_requires = ['numpy', 'pandas>=0.24', 'cython'],
+        description = 'Fast and memory-efficient Poisson factorization for sparse count matrices',
+        )
