@@ -72,7 +72,7 @@ A <- rgamma(nrow*k, 1, 1)
 B <- rgamma(ncol*k, 1, 1)
 
 ### call function
-model <- poismf_unsafe(A, B, Xcsr, Xcsc, k)
+model <- poismf_unsafe(A, B, Xcsr, Xcsc, k, nthreads=1)
 }
 \seealso{
 \link{poismf}

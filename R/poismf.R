@@ -435,7 +435,7 @@ poismf <- function(X, k = 50, method = "tncg",
 #' B <- rgamma(ncol*k, 1, 1)
 #' 
 #' ### call function
-#' model <- poismf_unsafe(A, B, Xcsr, Xcsc, k)
+#' model <- poismf_unsafe(A, B, Xcsr, Xcsc, k, nthreads=1)
 #' @seealso \link{poismf}
 #' @export
 poismf_unsafe <- function(A, B, Xcsr, Xcsc, k, ...) {
