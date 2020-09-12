@@ -36,6 +36,11 @@
     OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
     OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
+
+
+/* Note: this file is a wrapper for the R language. It doesn't need to be compiled
+   if wrapping it for a different language. */
+
 #include <R_ext/Rdynload.h>
 #include <R.h>
 #include <Rinternals.h>
