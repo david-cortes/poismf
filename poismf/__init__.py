@@ -126,6 +126,14 @@ class PoisMF:
         C double type (typically ``np.float64``). Using float types is
         faster and uses less memory, but it has less numerical precision,
         which is problematic with this type of model.
+    handle_interrupt : bool
+        Whether to respond to interrupt signals in the optimization procedure.
+        If passing 'True', whenever it receives an interrupt signal during the
+        optimzation procedure, it will termnate earlier, taking the current values
+        of the variables without finishing, instead of raising an error.
+        If passing 'False', will raise an error when it is interrupted, which
+        will only be catched after the procedure is finished, and the obtained
+        object will not be usable.
     nthreads : int
         Number of threads to use to parallelize computations.
         If set to 0 or less, will use the maximum available on the computer.
@@ -165,7 +173,7 @@ class PoisMF:
                  limit_step = True, initial_step = 1e-7,
                  weight_mult = 1.0, init_type = "gamma", random_state = 1,
                  reindex = True, copy_data = True, produce_dicts = False,
-                 use_float = False, nthreads = -1):
+                 use_float = False, handle_interrupt = True, nthreads = -1):
         assert method in ["tncg", "cg", "pg"]
         if (isinstance(k, float) or
             isinstance(k, np.float32) or
@@ -223,6 +231,7 @@ class PoisMF:
         self.limit_step = bool(limit_step)
         self.use_float = bool(use_float)
         self._dtype = ctypes.c_float if self.use_float else ctypes.c_double
+        self.handle_interrupt = bool(handle_interrupt)
         self.nthreads = nthreads
 
         self.reindex = bool(reindex)
@@ -344,7 +353,8 @@ class PoisMF:
             self.A, self.B,
             self.method, self.limit_step,
             self.l2_reg, self.l1_reg, self.weight_mult,
-            self.initial_step, self.niter, self.maxupd, self.nthreads)
+            self.initial_step, self.niter, self.maxupd,
+            self.handle_interrupt, self.nthreads)
         self.Bsum = self.B.sum(axis = 0).astype(self._dtype) + self.l1_reg
 
     def fit_unsafe(self, A, B, Xcsr, Xcsc):

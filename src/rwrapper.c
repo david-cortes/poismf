@@ -40,13 +40,11 @@
 
 /* Note: this file is a wrapper for the R language. It doesn't need to be compiled
    if wrapping it for a different language. */
+#ifdef _FOR_R
 
 #include <R_ext/Rdynload.h>
 #include <R.h>
 #include <Rinternals.h>
-#ifndef _FOR_R
-#define _FOR_R
-#endif
 #include "poismf.h"
 
 /* FORTRAN-BLAS -> CBLAS */
@@ -92,7 +90,8 @@ SEXP wrapper_run_poismf
     SEXP method, SEXP limit_step,
     SEXP l2_reg, SEXP l1_reg,
     SEXP w_mult, SEXP step_size,
-    SEXP niter, SEXP maxupd, SEXP nthreads
+    SEXP niter, SEXP maxupd,
+    SEXP handle_interrupt, SEXP nthreads
 )
 {
     int ret_code = run_poismf(
@@ -103,7 +102,7 @@ SEXP wrapper_run_poismf
         Rf_asReal(w_mult), Rf_asReal(step_size),
         (Method) Rf_asInteger(method), (bool) Rf_asLogical(limit_step),
         (size_t) Rf_asInteger(niter), (size_t) Rf_asInteger(maxupd),
-        Rf_asInteger(nthreads)
+        (bool) Rf_asLogical(handle_interrupt), Rf_asInteger(nthreads)
     );
     if (ret_code == 1) Rf_error("Out of memory.");
     return R_NilValue;
@@ -249,7 +248,7 @@ SEXP wrapper_topN
 
 
 static const R_CallMethodDef callMethods [] = {
-    {"wrapper_run_poismf", (DL_FUNC) &wrapper_run_poismf, 20},
+    {"wrapper_run_poismf", (DL_FUNC) &wrapper_run_poismf, 21},
     {"wrapper_predict_multiple", (DL_FUNC) &wrapper_predict_multiple, 6},
     {"wrapper_predict_factors", (DL_FUNC) &wrapper_predict_factors, 11},
     {"wrapper_predict_factors_multiple", (DL_FUNC) &wrapper_predict_factors_multiple, 16},
@@ -264,3 +263,4 @@ void R_init_poismf(DllInfo *info)
     R_useDynamicSymbols(info, TRUE);
 }
 
+#endif /* _FOR_R */

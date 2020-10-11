@@ -17,6 +17,7 @@ poismf(
   weight_mult = 1,
   init_type = "gamma",
   seed = 1,
+  handle_interrupt = TRUE,
   nthreads = parallel::detectCores()
 )
 }
@@ -110,6 +111,14 @@ adjusting the other hyperparameters.}
 them `~ Gamma(1, 1))` or `'unif'` (will initialize them `~ Unif(0, 1))`..}
 
 \item{seed}{Random seed to use for starting the factorizing matrices.}
+
+\item{handle_interrupt}{Whether to respond to interrupt signals in the optimization procedure.
+If passing `TRUE`, whenever it receives an interrupt signal during the
+optimzation procedure, it will termnate earlier, taking the current values
+of the variables without finishing, instead of throwing an error.
+If passing `FALSE`, will raise an error when it is interrupted, which
+will only be catched after the procedure is finished, and the obtained
+object will not be usable.}
 
 \item{nthreads}{Number of parallel threads to use.}
 }

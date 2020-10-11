@@ -91,6 +91,13 @@
 #' @param init_type How to initialize the model parameters. One of `'gamma'` (will initialize
 #' them `~ Gamma(1, 1))` or `'unif'` (will initialize them `~ Unif(0, 1))`..
 #' @param seed Random seed to use for starting the factorizing matrices.
+#' @param handle_interrupt Whether to respond to interrupt signals in the optimization procedure.
+#' If passing `TRUE`, whenever it receives an interrupt signal during the
+#' optimzation procedure, it will termnate earlier, taking the current values
+#' of the variables without finishing, instead of throwing an error.
+#' If passing `FALSE`, will raise an error when it is interrupted, which
+#' will only be catched after the procedure is finished, and the obtained
+#' object will not be usable.
 #' @param nthreads Number of parallel threads to use.
 #' @details In order to obtain sparse latent factor matrices, you need to pass
 #' `method='tncg'` and a large `niter`, such as `niter=50` or `niter=100`.
@@ -189,6 +196,7 @@ poismf <- function(X, k = 50, method = "tncg",
                    niter = "auto", maxupd = "auto",
                    limit_step = TRUE, initial_step = 1e-7,
                    weight_mult = 1, init_type = "gamma", seed = 1,
+                   handle_interrupt = TRUE,
                    nthreads = parallel::detectCores()) {
     
     ### Check input parameters
@@ -227,11 +235,12 @@ poismf <- function(X, k = 50, method = "tncg",
     maxupd       <- as.integer(maxupd)
     nthreads     <- as.integer(nthreads)
     
-    method_code <- switch(method,
-                          "tncg" = 1,
-                          "cg"   = 2,
-                          "pg"   = 3)
-    method_code <- as.integer(method_code)
+    method_code  <- switch(method,
+                           "tncg" = 1,
+                           "cg"   = 2,
+                           "pg"   = 3)
+    method_code  <- as.integer(method_code)
+    handle_interrupt <- as.logical(handle_interrupt)
     
     is_df <- FALSE
     
@@ -338,7 +347,7 @@ poismf <- function(X, k = 50, method = "tncg",
               A, B, dimA, dimB, k,
               method_code, limit_step, l2_reg, l1_reg,
               weight_mult, initial_step,
-              niter, maxupd, nthreads)
+              niter, maxupd, handle_interrupt, nthreads)
     } else { ## 'Matrix'
         .Call("wrapper_run_poismf",
               Xcsr@x, Xcsr@i, Xcsr@p,
@@ -346,7 +355,7 @@ poismf <- function(X, k = 50, method = "tncg",
               A, B, dimA, dimB, k,
               method_code, limit_step, l2_reg, l1_reg,
               weight_mult, initial_step,
-              niter, maxupd, nthreads)
+              niter, maxupd, handle_interrupt, nthreads)
     }
     
     ### Return all info
@@ -450,7 +459,7 @@ poismf__unsafe <- function(A, B, Xcsr, Xcsc, k, method="tncg",
                            weight_mult=1.,
                            nthreads=parallel::detectCores(),
                            init_type=NULL,
-                           seed=NULL) {
+                           seed=NULL, handle_interrupt=TRUE) {
     if (l2_reg == "auto")
         l2_reg <- switch(method, "tncg"=1e3, "cg"=1e5, "pg"=1e9)
     if (niter == "auto")
@@ -471,7 +480,7 @@ poismf__unsafe <- function(A, B, Xcsr, Xcsc, k, method="tncg",
           A, B, dimA, dimB, k,
           method_code, limit_step, l2_reg, l1_reg,
           weight_mult, initial_step,
-          niter, maxupd, nthreads)
+          niter, maxupd, handle_interrupt, nthreads)
     out <- list(
         A = A,
         B = B,
