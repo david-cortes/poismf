@@ -1,4 +1,4 @@
-AC_INIT([poismf], 2.5)
+AC_INIT([poismf], 0.2.6)
 
 AC_CHECK_LIB(atomic, __atomic_exchange, [HAS_ATOMIC=TRUE], [HAS_ATOMIC=FALSE])
 if test "$HAS_ATOMIC" = "TRUE"; then

@@ -59,6 +59,12 @@ For any installation problems, please open an issue in GitHub providing informat
 
 * R
 
+Latest version (recommended):
+```r
+remotes::install_github("david-cortes/poismf")
+```
+
+Older version from CRAN:
 ```r
 install.packages("poismf")
 ```

@@ -13,9 +13,11 @@ factors(model, X, add_names = TRUE)
 a `data.frame` or as a sparse or dense matrix (see documentation of \link{poismf}
 for details on the data type). While other functions only accept sparse matrices
 in COO (triplets) format, this function will also take CSR matrices from the
-`SparseM` package (recommended) and CSC matrices from the `Matrix` package
-(`Matrix::dgCMatrix`, but it's not recommended). Inputs will be converted to CSR
-regardless of their original format.
+`SparseM` and  `Matrix` packages (classes `dgRMatrix`/`RsparseMatrix` for `Matrix`).
+Inputs will be converted to CSR regardless of their original format.
+
+Note that converting a matrix to `dgRMatrix` format might require using
+`as(m, "RsparseMatrix")` instead of using `dgRMatrix` directly.
 
 If passing a `data.frame`, the first column should contain row indices or IDs,
 and these will be internally remapped - the mapping will be available as the row

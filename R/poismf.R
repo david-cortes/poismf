@@ -581,9 +581,11 @@ factors.single <- function(model, X, l2_reg = model$l2_reg, l1_reg = model$l1_re
 #' a `data.frame` or as a sparse or dense matrix (see documentation of \link{poismf}
 #' for details on the data type). While other functions only accept sparse matrices
 #' in COO (triplets) format, this function will also take CSR matrices from the
-#' `SparseM` package (recommended) and CSC matrices from the `Matrix` package
-#' (`Matrix::dgCMatrix`, but it's not recommended). Inputs will be converted to CSR
-#' regardless of their original format.
+#' `SparseM` and  `Matrix` packages (classes `dgRMatrix`/`RsparseMatrix` for `Matrix`).
+#' Inputs will be converted to CSR regardless of their original format.
+#' 
+#' Note that converting a matrix to `dgRMatrix` format might require using
+#' `as(m, "RsparseMatrix")` instead of using `dgRMatrix` directly.
 #' 
 #' If passing a `data.frame`, the first column should contain row indices or IDs,
 #' and these will be internally remapped - the mapping will be available as the row
@@ -631,10 +633,13 @@ factors <- function(model, X, add_names=TRUE) {
         if (is.null(dim(X))) {
             stop("Invalid 'X'.")
         }
-        if (ncol(X) > model$dimB) stop("'X' cannot contain new columns.")
+        if (ncol(X) != model$dimB)
+            stop("'X' should contain the same columns as passed to 'poismf'.")
         
         if ("matrix" %in% class(X)) {
-            Xcsr <- as(t(X), "dgCMatrix")
+            Xcsr <- as(X, "dgRMatrix")
+        } else if ("dgRMatrix" %in% class(X)) {
+            Xcsr <- X
         } else if ("dgTMatrix" %in% class(X)) {
             Xcsr <- as(Matrix::t(X), "dgCMatrix")
         } else if("dgCMatrix" %in% class(X)) {
@@ -657,7 +662,7 @@ factors <- function(model, X, add_names=TRUE) {
             stop("'X' must be a 'data.frame' with 3 columns, or a matrix (either full, or sparse triplets or CSR).")
         }
         
-        if ("matrix.csr" %in% class(Xcsr)) {
+        if (any(class(Xcsr) %in% c("dgRMatrix", "matrix.csr"))) {
             dimA <- nrow(Xcsr)
         } else {
             dimA <- ncol(Xcsr)
@@ -669,6 +674,10 @@ factors <- function(model, X, add_names=TRUE) {
         Xr_indptr  <- Xcsr@ia - 1L
         Xr_indices <- Xcsr@ja - 1L
         Xr_values  <- Xcsr@ra
+    } else if ("dgRMatrix" %in% class(Xcsr)) {
+        Xr_indptr  <- Xcsr@p
+        Xr_indices <- Xcsr@j
+        Xr_values  <- Xcsr@x
     } else {
         Xr_indptr  <- Xcsr@p
         Xr_indices <- Xcsr@i
