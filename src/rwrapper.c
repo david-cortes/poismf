@@ -176,7 +176,7 @@ SEXP wrapper_predict_factors_multiple
 {
     if ((R_xlen_t)Rf_asInteger(k) * (R_xlen_t)Rf_asInteger(dimA) <= 0)
     {
-        Rf_error("Requested array dimensions exceed R limits.\n");
+        Rf_error("Requested array dimensions exceed R limits.");
         return R_NilValue; /* not reached */
     }
     SEXP out = PROTECT(Rf_allocVector(REALSXP, (R_xlen_t)Rf_asInteger(k)
@@ -196,7 +196,7 @@ SEXP wrapper_predict_factors_multiple
 
     UNPROTECT(1);
     if (res != 0) {
-        Rf_error("Out of memory.\n");
+        Rf_error("Out of memory.");
         return R_NilValue; /* not reached */
     }
     return out;
@@ -271,7 +271,7 @@ SEXP large_rnd_vec
 {
     R_xlen_t tot_size = (size_t)Rf_asInteger(dim1) * (size_t)Rf_asInteger(dim2);
     if (tot_size < 0) {
-        Rf_error("Requested array dimensions exceed R limits.\n");
+        Rf_error("Requested array dimensions exceed R limits.");
         return Rf_allocVector(REALSXP, 0);
     }
     SEXP out = PROTECT(Rf_allocVector(REALSXP, tot_size));
