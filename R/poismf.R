@@ -330,13 +330,25 @@ poismf <- function(X, k = 50, method = "tncg",
     if (nnz < 1) { stop("Input does not contain non-zero values.") }
     
     ### Initialize factor matrices
+    size_within_int_range <- (
+        .Call("check_size_below_int_max", dimA, k) &&
+        .Call("check_size_below_int_max", dimB, k)
+    )
     set.seed(seed)
-    if (init_type == "gamma") {
-        A <- -log(runif(dimA * k))
-        B <- -log(runif(dimB * k))
+    if (size_within_int_range) {
+        if (init_type == "gamma") {
+            A <- -log(runif(dimA * k))
+            B <- -log(runif(dimB * k))
+        } else {
+            A <- runif(dimA * k)
+            B <- runif(dimB * k)
+        }
     } else {
-        A <- runif(dimA * k)
-        B <- runif(dimB * k)
+        A <- .Call("large_rnd_vec", dimA, k, init_type == "gamma")
+        B <- .Call("large_rnd_vec", dimB, k, init_type == "gamma")
+        if (NROW(A) == 0 || NROW(B == 0)) {
+            stop("Memory error.")
+        }
     }
     
     ### Run optimizer
@@ -707,6 +719,8 @@ factors <- function(model, X, add_names=TRUE) {
                   model$initial_step, model$niter, model$maxupd,
                   method_code, model$limit_step,
                   model$nthreads)
+    if (is.null(Anew))
+        stop("Memory error.")
     Anew <- t(matrix(Anew, nrow=model$k))
     if (add_names & ("levels_A" %in% names(model))) {
         row.names(Anew) <- levs

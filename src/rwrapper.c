@@ -45,6 +45,8 @@
 #include <R_ext/Rdynload.h>
 #include <R.h>
 #include <Rinternals.h>
+#include <limits.h>
+#include <math.h>
 #include "poismf.h"
 
 /* FORTRAN-BLAS -> CBLAS */
@@ -115,7 +117,7 @@ SEXP wrapper_predict_multiple
     SEXP nthreads
 )
 {
-    size_t nnz = (size_t) Rf_length(ixA);
+    size_t nnz = (size_t) Rf_xlength(ixA);
     SEXP out = PROTECT(Rf_allocVector(REALSXP, nnz));
     predict_multiple(
         REAL(out), REAL(A), REAL(B),
@@ -139,14 +141,14 @@ SEXP wrapper_predict_factors
 )
 {
     size_t k_szt = (size_t) Rf_asInteger(k);
-    size_t dimA = (size_t)Rf_length(A_old) / k_szt;
+    size_t dimA = (size_t)Rf_xlength(A_old) / k_szt;
     SEXP out = PROTECT(Rf_allocVector(REALSXP, k_szt));
 
     int ret_code = factors_single(
         REAL(out), k_szt,
         REAL(A_old), dimA,
         REAL(counts), INTEGER(ix),
-        (sparse_ix) Rf_length(counts),
+        (size_t) Rf_xlength(counts),
         REAL(B), REAL(Bsum),
         Rf_asInteger(maxupd),
         Rf_asReal(l2_reg),
@@ -172,8 +174,13 @@ SEXP wrapper_predict_factors_multiple
     SEXP method, SEXP limit_step, SEXP nthreads
 )
 {
-    SEXP out = PROTECT(Rf_allocVector(REALSXP, (size_t)Rf_asInteger(k)
-                                                * (size_t)Rf_asInteger(dimA)));
+    if ((R_xlen_t)Rf_asInteger(k) * (R_xlen_t)Rf_asInteger(dimA) <= 0)
+    {
+        Rf_error("Requested array dimensions exceed R limits.\n");
+        return R_NilValue; /* not reached */
+    }
+    SEXP out = PROTECT(Rf_allocVector(REALSXP, (R_xlen_t)Rf_asInteger(k)
+                                                * (R_xlen_t)Rf_asInteger(dimA)));
 
     int res = factors_multiple(
         REAL(out), REAL(B), REAL(A_old), REAL(Bsum),
@@ -189,7 +196,7 @@ SEXP wrapper_predict_factors_multiple
 
     UNPROTECT(1);
     if (res != 0) {
-        Rf_error("Out of memory.");
+        Rf_error("Out of memory.\n");
         return R_NilValue; /* not reached */
     }
     return out;
@@ -206,7 +213,7 @@ SEXP wrapper_eval_llk
     long double llk = eval_llk(
         REAL(A), REAL(B),
         INTEGER(ixA), INTEGER(ixB), REAL(Xcoo),
-        (size_t) Rf_length(Xcoo), Rf_asInteger(k),
+        (size_t) Rf_xlength(Xcoo), Rf_asInteger(k),
         (bool) Rf_asLogical(full_llk), (bool) Rf_asLogical(include_missing),
         (size_t) Rf_asInteger(dimA), (size_t) Rf_asInteger(dimB),
         Rf_asInteger(nthreads)
@@ -226,14 +233,14 @@ SEXP wrapper_topN
     SEXP top_n, SEXP nthreads
 )
 {
-    size_t n_include = (size_t) Rf_length(include_ix);
-    size_t n_exclude = (size_t) Rf_length(exclude_ix);
+    size_t n_include = (size_t) Rf_xlength(include_ix);
+    size_t n_exclude = (size_t) Rf_xlength(exclude_ix);
     int res = topN(
-        REAL(a_vec), REAL(B), Rf_length(a_vec),
+        REAL(a_vec), REAL(B), Rf_xlength(a_vec),
         n_include? INTEGER(include_ix) : (int*)NULL, n_include,
         n_exclude? INTEGER(exclude_ix) : (int*)NULL, n_exclude,
         INTEGER(outp_ix),
-        (Rf_length(outp_score) > 0)?
+        (Rf_xlength(outp_score) > 0)?
             REAL(outp_score) : (double*)NULL,
         (size_t) Rf_asInteger(top_n), (size_t) Rf_asInteger(dimB),
         Rf_asInteger(nthreads)
@@ -245,6 +252,40 @@ SEXP wrapper_topN
     return R_NilValue;
 }
 
+SEXP check_size_below_int_max
+(
+    SEXP dim1, SEXP dim2
+)
+{
+    SEXP out = PROTECT(Rf_allocVector(LGLSXP, 1));
+    LOGICAL(out)[0] = (size_t)Rf_asInteger(dim1) * (size_t)Rf_asInteger(dim2) <= INT_MAX;
+    UNPROTECT(1);
+    return out;
+}
+
+SEXP large_rnd_vec
+(
+    SEXP dim1, SEXP dim2,
+    SEXP do_gamma
+)
+{
+    R_xlen_t tot_size = (size_t)Rf_asInteger(dim1) * (size_t)Rf_asInteger(dim2);
+    if (tot_size < 0) {
+        Rf_error("Requested array dimensions exceed R limits.\n");
+        return Rf_allocVector(REALSXP, 0);
+    }
+    SEXP out = PROTECT(Rf_allocVector(REALSXP, tot_size));
+    double *restrict ptr_vec = REAL(out);
+    GetRNGstate();
+    for (size_t ix = 0; ix < (size_t)tot_size; ix++)
+        ptr_vec[ix] = unif_rand();
+    PutRNGstate();
+    if (Rf_asLogical(do_gamma))
+        for (size_t ix = 0; ix < (size_t)tot_size; ix++)
+            ptr_vec[ix] = -log(ptr_vec[ix]);
+    UNPROTECT(1);
+    return out;
+}
 
 
 static const R_CallMethodDef callMethods [] = {
@@ -254,6 +295,8 @@ static const R_CallMethodDef callMethods [] = {
     {"wrapper_predict_factors_multiple", (DL_FUNC) &wrapper_predict_factors_multiple, 16},
     {"wrapper_eval_llk", (DL_FUNC) &wrapper_eval_llk, 11},
     {"wrapper_topN", (DL_FUNC) &wrapper_topN, 9},
+    {"check_size_below_int_max", (DL_FUNC) &check_size_below_int_max, 2},
+    {"large_rnd_vec", (DL_FUNC) &large_rnd_vec, 3},
     {NULL, NULL, 0}
 }; 
 
