@@ -329,11 +329,18 @@ poismf <- function(X, k = 50, method = "tncg",
     }
     if (nnz < 1) { stop("Input does not contain non-zero values.") }
     
-    ### Initialize factor matrices
+    ### Check for integer overflow
+    if ((max(c(dimA, dimB, k)) > .Machine$integer.max) ||
+        (min(c(dimA, dimB, k)) <= 0) ||
+        any(c(is.na(dimA), is.na(dimB), is.na(k)))) {
+        stop("Error: integer overflow. Dimensions cannot be larger than 2^31-1.")
+    }
     size_within_int_range <- (
         .Call("check_size_below_int_max", dimA, k) &&
         .Call("check_size_below_int_max", dimB, k)
     )
+    
+    ### Initialize factor matrices
     set.seed(seed)
     if (size_within_int_range) {
         if (init_type == "gamma") {
