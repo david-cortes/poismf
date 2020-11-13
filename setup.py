@@ -97,7 +97,7 @@ else:
         author = 'David Cortes',
         author_email = 'david.cortes.rivera@gmail.com',
         url = 'https://github.com/david-cortes/poismf',
-        version = '0.2.5',
+        version = '0.2.6',
         install_requires = ['numpy', 'pandas>=0.24', 'cython'],
         description = 'Fast and memory-efficient Poisson factorization for sparse count matrices',
     )

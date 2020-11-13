@@ -96,6 +96,10 @@ SEXP wrapper_run_poismf
     SEXP handle_interrupt, SEXP nthreads
 )
 {
+    if (Rf_xlength(Xr) == 0) {
+        Rf_error("'X' contains no non-zero entries.");
+        return R_NilValue;
+    }
     int ret_code = run_poismf(
         REAL(A), REAL(Xr), INTEGER(Xr_indptr), INTEGER(Xr_indices),
         REAL(B), REAL(Xc), INTEGER(Xc_indptr), INTEGER(Xc_indices),

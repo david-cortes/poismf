@@ -74,6 +74,9 @@ def _run_poismf(
     bint handle_interrupt=1,
     int nthreads=1):
 
+    if Xr.shape[0] == 0:
+        raise ValueError("'X' contains no non-zero entries.")
+
     ### Check for potential integer overflow
     INT_MAX = np.iinfo(ctypes.c_int).max
     if max(A.shape[0], A.shape[1], B.shape[0]) > INT_MAX:
@@ -117,10 +120,16 @@ def _predict_factors(
         real_t w_mult = 1., bint limit_step = 0,
     ):
     cdef np.ndarray[real_t, ndim=1] out = np.empty(A_old.shape[1], dtype=c_real)
+    cdef real_t *ptr_counts = NULL
+    cdef size_t *ptr_ix = NULL
+    if counts.shape[0]:
+        ptr_counts = &counts[0]
+    if ix.shape[0]:
+        ptr_ix = &ix[0]
     cdef int ret_code = factors_single(
         &out[0], <size_t> A_old.shape[1],
         &A_old[0,0], <size_t> A_old.shape[0],
-        &counts[0], &ix[0], <size_t> counts.shape[0],
+        ptr_counts, ptr_ix, <size_t> counts.shape[0],
         &B[0,0], &Bsum[0],
         maxupd, l2_reg, l1_new, l1_old,
         w_mult
@@ -154,8 +163,14 @@ def _predict_factors_multiple(
     cdef real_t *ptr_A_old = &A_old[0,0]
     cdef real_t *ptr_Bsum = &Bsum[0]
     cdef size_t *ptr_Xr_indptr = &Xr_indptr[0]
-    cdef size_t *ptr_Xr_indices = &Xr_indices[0]
-    cdef real_t *ptr_Xr = &Xr[0]
+    
+    cdef size_t *ptr_Xr_indices = NULL
+    cdef real_t *ptr_Xr = NULL
+
+    if Xr_indices.shape[0]:
+        ptr_Xr_indices = &Xr_indices[0]
+    if Xr.shape[0]:
+        ptr_Xr = &Xr[0]
 
     cdef Method c_method = tncg
     if method == "tncg":
@@ -189,6 +204,8 @@ def _eval_llk_test(
         bint full_llk = 0, bint include_missing = 0,
         int nthreads = 1
     ):
+    if ixA.shape[0] == 0:
+        return 0.
     cdef real_t *ptr_A = &A[0,0]
     cdef real_t *ptr_B = &B[0,0]
     cdef size_t *ptr_ixA = &ixA[0]

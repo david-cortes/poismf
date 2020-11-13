@@ -141,6 +141,10 @@ void pg_iteration
     {
 
         nnz_this = Xr_indptr[ia + 1] - Xr_indptr[ia];
+        if (nnz_this == 0) {
+            memset(A + ia*k, 0, k*sizeof(real_t));
+            continue;
+        }
         if (w_mult != 1.) Bsum = Bsum_user + ia*k;
 
         for (size_t p = 0; p < maxupd; p++)
@@ -273,6 +277,11 @@ void cg_iteration
         data.X_ind = Xr_indices + Xr_indptr[ia];
         data.nnz_this = Xr_indptr[ia + 1] - Xr_indptr[ia];
 
+        if (data.nnz_this == 0) {
+            memset(A + ia*k, 0, k*sizeof(real_t));
+            continue;
+        }
+
         if (w_mult != 1.) data.Bsum = Bsum_w + ia*k;
 
         minimize_nonneg_cg(
@@ -317,6 +326,11 @@ void tncg_iteration
         data.Xr = Xr + Xr_indptr[ia];
         data.X_ind = Xr_indices + Xr_indptr[ia];
         data.nnz_this = Xr_indptr[ia + 1] - Xr_indptr[ia];
+
+        if (data.nnz_this == 0) {
+            memset(A + ia*k, 0, k*sizeof(real_t));
+            continue;
+        }
 
         if (w_mult != 1.) data.Bsum = Bsum_w + ia*k;
 

@@ -10,6 +10,9 @@
 #' matrix by maximizing Poisson likelihood minus L1/L2 regularization, using
 #' gradient-based optimization procedures.
 #' 
+#' The model idea is: \eqn{\mathbf{X} \approx \texttt{Poisson}(\mathbf{A} \mathbf{B}^T)}{
+#' X ~ Poisson(A*t(B))}
+#' 
 #' Ideal for usage in recommender systems, in which the `X` matrix would consist of
 #' interactions (e.g. clicks, views, plays), with users representing the rows and items
 #' representing the columns.

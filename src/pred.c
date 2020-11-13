@@ -281,6 +281,11 @@ int factors_single
     real_t w_mult
 )
 {
+    if (nnz == 0) {
+        memset(out, 0, k*sizeof(real_t));
+        return 0;
+    }
+
     /* Note: Bsum should already have the *old* l1 regularization added to it */
     int k_int = (int) k;
     real_t l1_reg = l1_new - l1_old;
