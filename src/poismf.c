@@ -349,8 +349,11 @@ void tncg_iteration
 bool should_stop_procedure = false;
 void set_interrup_global_variable(int s)
 {
-    fprintf(stderr, "Error: procedure was interrupted\n");
-    should_stop_procedure = true;
+    #pragma omp critical
+    {
+        fprintf(stderr, "Error: procedure was interrupted\n");
+        should_stop_procedure = true;
+    }
 }
 
 
