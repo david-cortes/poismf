@@ -12,7 +12,7 @@ Description: Creates a low-rank factorization of a sparse counts matrix by maxim
 	Similar to hierarchical Poisson factorization, but follows an optimization-based approach with regularization instead of a
 	hierarchical structure, and is fit through gradient-based methods instead of variational inference.
 License: BSD_2_clause + file LICENSE
-Imports: Matrix, methods
+Imports: Matrix (>= 1.3), methods
 Enhances: SparseM
 RoxygenNote: 7.1.1
 NeedsCompilation: yes

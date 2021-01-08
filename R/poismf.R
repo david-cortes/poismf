@@ -25,7 +25,7 @@
 #' \item A sparse matrix from package `Matrix` in triplets (COO) format
 #' (that is: `Matrix::dgTMatrix`) (recommended).
 #' Such a matrix can be created from row/column indices through
-#' function `Matrix::sparseMatrix` (with `giveCsparse=FALSE`).
+#' function `Matrix::sparseMatrix` (with `repr="T"`).
 #' Will also accept them in CSC format (`Matrix::dgCMatrix`), but will be converted
 #' along the way (so it will be slightly slower).
 #' \item A sparse matrix in COO format from the `SparseM` package. Such a matrix
@@ -150,7 +150,7 @@
 #' ### can also pass X as sparse matrix - see below
 #' ### X <- Matrix::sparseMatrix(
 #' ###          i=X$row_ix, j=X$col_ix, x=X$count,
-#' ###          giveCsparse=FALSE)
+#' ###          repr="T")
 #' ### the indices can also be characters or other types:
 #' ### X$row_ix <- paste0("user", X$row_ix)
 #' ### X$col_ix <- paste0("item", X$col_ix)
@@ -269,8 +269,8 @@ poismf <- function(X, k = 50, method = "tncg",
         ## Also: 'Matrix' is zero-based, whereas 'SparseM' is one-based, except
         ## for vectors in 'Matrix' which are one-based; but when creating a CSC matrix, it will
         ## require the indices to be one-based and the indices pointers to be zero-based.
-        Xcsr <- Matrix::sparseMatrix(i = ix_col, j = ix_row, x = xflat, giveCsparse = TRUE)
-        Xcsc <- Matrix::sparseMatrix(i = ix_row, j = ix_col, x = xflat, giveCsparse = TRUE)
+        Xcsr <- Matrix::sparseMatrix(i = ix_col, j = ix_row, x = xflat, repr = "C")
+        Xcsc <- Matrix::sparseMatrix(i = ix_row, j = ix_col, x = xflat, repr = "C")
     } else if ("matrix" %in% class(X)) {
         Xcsr <- as(t(X), "dgCMatrix")
         Xcsc <- as(  X,  "dgCMatrix")
@@ -286,9 +286,9 @@ poismf <- function(X, k = 50, method = "tncg",
             Xcsc <- SparseM::as.matrix.csc(X)
         } else {
             Xcsr <- Matrix::sparseMatrix(i=X@ja, j=X@ia, x=X@ra,
-                                         giveCsparse=TRUE, dims=rev(X@dimension))
+                                         repr="C", dims=rev(X@dimension))
             Xcsc <- Matrix::sparseMatrix(i=X@ia, j=X@ja, x=X@ra,
-                                         giveCsparse=TRUE, dims=X@dimension)
+                                         repr="C", dims=X@dimension)
         }
     } else if ("matrix.csr" %in% class(X)) {
         Xcsr <- X
@@ -298,7 +298,7 @@ poismf <- function(X, k = 50, method = "tncg",
             Xcsc@dimension <- rev(Xcsc@dimension)
         } else {
             Xcoo <- Matrix::sparseMatrix(i=X@ja, p=X@ia-1L, x=X@ra,
-                                         giveCsparse=FALSE, dims=rev(X@dimension))
+                                         repr="T", dims=rev(X@dimension))
             Xcsr <- as(Xcoo, "dgCMatrix")
             Xcsc <- as(Matrix::t(Xcoo), "dgCMatrix")
         }
@@ -310,7 +310,7 @@ poismf <- function(X, k = 50, method = "tncg",
             Xcsr@dimension <- rev(Xcsr@dimension)
         } else {
             Xcoo <- Matrix::sparseMatrix(i=X@ja, p=X@ia-1L, x=X@ra,
-                                         giveCsparse=FALSE, dims=X@dimension)
+                                         repr="T", dims=X@dimension)
             Xcsr <- as(Matrix::t(Xcoo), "dgCMatrix")
             Xcsc <- as(Xcoo, "dgCMatrix")
         }
@@ -451,11 +451,11 @@ poismf <- function(X, k = 50, method = "tncg",
 #' ### convert to required format
 #' Xcsr <- Matrix::sparseMatrix(
 #'             i=X$col_ix, j=X$row_ix, x=X$count,
-#'             giveCsparse=TRUE
+#'             repr="C"
 #' )
 #' Xcsc <- Matrix::sparseMatrix(
 #'             i=X$row_ix, j=X$col_ix, x=X$count,
-#'             giveCsparse=TRUE
+#'             repr="C"
 #' )
 #' 
 #' ### initialize factor matrices
@@ -655,7 +655,7 @@ factors <- function(model, X, add_names=TRUE) {
         ixA  <- as.integer(fact)
         ixB  <- process.items.vec(model, X[[2]], "Second column of 'X_test'")
         Xval <- as.numeric(X[[3]])
-        Xcsr <- Matrix::sparseMatrix(i=ixB+1L, j=ixA, x=Xval, giveCsparse=TRUE)
+        Xcsr <- Matrix::sparseMatrix(i=ixB+1L, j=ixA, x=Xval, repr="C")
         dimA <- ncol(Xcsr)
     } else {
         levs <- NULL
@@ -679,10 +679,10 @@ factors <- function(model, X, add_names=TRUE) {
             } else {
                 if ("matrix.coo" %in% class(X)) {
                     Xcsr <- Matrix::sparseMatrix(i=X@ja, j=X@ia, x=X@ra,
-                                                 giveCsparse=TRUE, dims=rev(X@dimension))
+                                                 repr="C", dims=rev(X@dimension))
                 } else {
                     Xcsr <- Matrix::t(Matrix::sparseMatrix(i=X@ja, p=X@ia-1L, x=X@ra,
-                                                           giveCsparse=TRUE, dims=X@dimension))
+                                                           repr="C", dims=X@dimension))
                 }
             }
         } else if ("matrix.csr" %in% class(X)) {
@@ -800,11 +800,11 @@ predict.poismf <- function(object, a, b = NULL, ...) {
                 if ("matrix.csr" %in% class(a)) {
                     return_csr <- TRUE
                     a <- Matrix::t(Matrix::sparseMatrix(i=a@ja, p=a@ia-1L, x=a@ra,
-                                                        giveCsparse=FALSE, dims=rev(a@dimension)))
+                                                        repr="T", dims=rev(a@dimension)))
                 } else {
                     return_csc <- TRUE
                     a <- Matrix::sparseMatrix(i=a@ja, p=a@ia-1L, x=a@ra,
-                                              giveCsparse=FALSE, dims=a@dimension)
+                                              repr="T", dims=a@dimension)
                 }
             }
         }
@@ -834,8 +834,12 @@ predict.poismf <- function(object, a, b = NULL, ...) {
                   ixA, ixB, object$nthreads)
     if (outp_matrix) {
         if (NROW(intersect(c("matrix", "dgTMatrix", "dgCMatrix"), class(a)))) {
+            if (return_csc)
+                repr <- "C"
+            else
+                repr <- "T"
             return(Matrix::sparseMatrix(i=ixA+1L, j=ixB+1L, x=pred,
-                                        dims=mat_dims, giveCsparse=return_csc))
+                                        dims=mat_dims, repr=repr))
         } else {
             if (requireNamespace("SparseM", quietly = TRUE)) {
                 out <- new("matrix.coo", ra=pred, ja=ixB+1L, ia=ixA+1L, dim=mat_dims)
@@ -848,7 +852,7 @@ predict.poismf <- function(object, a, b = NULL, ...) {
                 }
             } else {
                 return(Matrix::sparseMatrix(i=ixA+1L, j=ixB+1L, x=pred,
-                                            dims=mat_dims, giveCsparse=FALSE))
+                                            dims=mat_dims, repr="T"))
             }
         }
     } else {
@@ -1198,14 +1202,14 @@ poisson.llk <- function(model, X_test, full_llk = FALSE, include_missing = FALSE
                 X_test <- SparseM::as.matrix.coo(X_test)
             } else {
                 X_test <- Matrix::sparseMatrix(j=X_test@ja, p=X_test@ia-1L, x=X_test@ra,
-                                               giveCsparse=FALSE)
+                                               repr="T")
             }
         } else if ("matrix.csc" %in% class(X_test)) {
             if (requireNamespace("SparseM", quietly = TRUE)) {
                 X_test <- SparseM::as.matrix.coo(X_test)
             } else {
                 X_test <- Matrix::sparseMatrix(i=X_test@ja, p=X_test@ia-1L, x=X_test@ra,
-                                               giveCsparse=FALSE)
+                                               repr="T")
             }
         }
         

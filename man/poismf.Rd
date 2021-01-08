@@ -31,7 +31,7 @@ as a sparse COO matrix instead.
 \item A sparse matrix from package `Matrix` in triplets (COO) format
 (that is: `Matrix::dgTMatrix`) (recommended).
 Such a matrix can be created from row/column indices through
-function `Matrix::sparseMatrix` (with `giveCsparse=FALSE`).
+function `Matrix::sparseMatrix` (with `repr="T"`).
 Will also accept them in CSC format (`Matrix::dgCMatrix`), but will be converted
 along the way (so it will be slightly slower).
 \item A sparse matrix in COO format from the `SparseM` package. Such a matrix
@@ -182,7 +182,7 @@ X <- X[!duplicated(X[, c("row_ix", "col_ix")]), ]
 ### can also pass X as sparse matrix - see below
 ### X <- Matrix::sparseMatrix(
 ###          i=X$row_ix, j=X$col_ix, x=X$count,
-###          giveCsparse=FALSE)
+###          repr="T")
 ### the indices can also be characters or other types:
 ### X$row_ix <- paste0("user", X$row_ix)
 ### X$col_ix <- paste0("item", X$col_ix)

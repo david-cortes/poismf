@@ -59,11 +59,11 @@ X <- X[!duplicated(X[, c("row_ix", "col_ix")]), ]
 ### convert to required format
 Xcsr <- Matrix::sparseMatrix(
             i=X$col_ix, j=X$row_ix, x=X$count,
-            giveCsparse=TRUE
+            repr="C"
 )
 Xcsc <- Matrix::sparseMatrix(
             i=X$row_ix, j=X$col_ix, x=X$count,
-            giveCsparse=TRUE
+            repr="C"
 )
 
 ### initialize factor matrices
