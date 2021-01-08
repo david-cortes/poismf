@@ -14,7 +14,7 @@ cdef extern from "../src/poismf.h":
         const size_t dimA, const size_t dimB, const size_t k,
         const real_t l2_reg, const real_t l1_reg, const real_t w_mult, real_t step_size,
         const Method method, const bint limit_step, const size_t numiter, const size_t maxupd,
-        const bint handle_interrupt, const int nthreads)
+        const int nthreads)
     int factors_single(
         real_t *out, size_t k,
         real_t *A_old, size_t dimA,
@@ -99,10 +99,12 @@ def _run_poismf(
         dimA, dimB, k,
         l2_reg, l1_reg, w_mult, step_size,
         c_method, limit_step, niter, maxupd,
-        handle_interrupt, nthreads
+        nthreads
         )
     if ret_code == 1:
         raise MemoryError("Could not allocate enough memory.")
+    elif (ret_code == 2) and (not handle_interrupt):
+        raise InterruptedError("Procedure was interrupted")
 
 def _predict_multiple(np.ndarray[real_t, ndim=1] out, np.ndarray[real_t, ndim=2] A, np.ndarray[real_t, ndim=2] B,
                       np.ndarray[size_t, ndim=1] ix_u, np.ndarray[size_t, ndim=1] ix_i, int nthreads):

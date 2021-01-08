@@ -374,7 +374,6 @@ void set_interrup_global_variable(int s)
     limit_step                : Whether to limit CG step sizes to zero-out one variable per step
     numiter                   : Number of iterations for which to run the procedure
     maxupd                    : Number of updates to the same vector per iteration
-    handle_interrupt          : Whether to respond to interrupt signals
     nthreads                  : Number of threads to use
 Matrices A and B are optimized in-place,
 and are assumed to be in row-major order.
@@ -386,7 +385,7 @@ int run_poismf(
     const size_t dimA, const size_t dimB, const size_t k,
     const real_t l2_reg, const real_t l1_reg, const real_t w_mult, real_t step_size,
     const Method method, const bool limit_step, const size_t numiter, const size_t maxupd,
-    const bool handle_interrupt, const int nthreads)
+    const int nthreads)
 {
 
     real_t *cnst_sum = (real_t*) malloc(sizeof(real_t) * k);
@@ -407,6 +406,8 @@ int run_poismf(
     real_t *inf_tncg = NULL;
     int ret_code = 0;
     should_stop_procedure = false;
+
+    sig_t_ old_interrupt_handle = signal(SIGINT, set_interrup_global_variable);
 
 
     if (w_mult != 1.) {
@@ -434,8 +435,6 @@ int run_poismf(
 
     for (size_t fulliter = 0; fulliter < numiter; fulliter++){
 
-        if (handle_interrupt)
-            signal(SIGINT, set_interrup_global_variable);
         if (should_stop_procedure) goto cleanup;
 
         /* Constants to use later */
@@ -482,8 +481,6 @@ int run_poismf(
             }
         }
 
-        if (handle_interrupt)
-            signal(SIGINT, set_interrup_global_variable);
         if (should_stop_procedure) goto cleanup;
 
 
@@ -541,6 +538,8 @@ int run_poismf(
         free(Bsum_w);
         free(zeros_tncg);
         free(inf_tncg);
+        signal(SIGINT, old_interrupt_handle);
+        if (should_stop_procedure) ret_code = 2;
         should_stop_procedure = false;
 
     return ret_code;

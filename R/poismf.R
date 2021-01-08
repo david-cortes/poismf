@@ -94,13 +94,11 @@
 #' @param init_type How to initialize the model parameters. One of `'gamma'` (will initialize
 #' them `~ Gamma(1, 1))` or `'unif'` (will initialize them `~ Unif(0, 1))`..
 #' @param seed Random seed to use for starting the factorizing matrices.
-#' @param handle_interrupt Whether to respond to interrupt signals in the optimization procedure.
-#' If passing `TRUE`, whenever it receives an interrupt signal during the
-#' optimzation procedure, it will termnate earlier, taking the current values
-#' of the variables without finishing, instead of throwing an error.
-#' If passing `FALSE`, will raise an error when it is interrupted, which
-#' will only be catched after the procedure is finished, and the obtained
-#' object will not be usable.
+#' @param handle_interrupt When receiving an interrupt signal, whether the model should stop
+#' early and leave a usable object with the parameters obtained up
+#' to the point when it was interrupted (when passing `TRUE`), or
+#' raise an interrupt exception without producing a fitted model object
+#' (when passing `FALSE`).
 #' @param nthreads Number of parallel threads to use.
 #' @details In order to obtain sparse latent factor matrices, you need to pass
 #' `method='tncg'` and a large `niter`, such as `niter=50` or `niter=100`.

@@ -64,7 +64,6 @@ extern "C" {
 #include <stdlib.h>
 #include <string.h>
 #include <stddef.h>
-#include <signal.h>
 #include <limits.h>
 #ifdef _OPENMP
     #include <omp.h>
@@ -83,6 +82,8 @@ extern "C" {
     #define sparse_ix int
     #undef USE_FLOAT
 #endif
+#include <signal.h>
+typedef void (*sig_t_)(int);
 
 #ifndef USE_FLOAT
     #ifndef real_t
@@ -223,7 +224,7 @@ int run_poismf(
     const size_t dimA, const size_t dimB, const size_t k,
     const real_t l2_reg, const real_t l1_reg, const real_t w_mult, real_t step_size,
     const Method method, const bool limit_step, const size_t numiter, const size_t maxupd,
-    const bool handle_interrupt, const int nthreads);
+    const int nthreads);
 
 /* topN.c */
 bool check_is_sorted(sparse_ix arr[], size_t n);

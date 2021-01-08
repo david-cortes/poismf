@@ -127,13 +127,11 @@ class PoisMF:
         faster and uses less memory, but it has less numerical precision,
         which is problematic with this type of model.
     handle_interrupt : bool
-        Whether to respond to interrupt signals in the optimization procedure.
-        If passing 'True', whenever it receives an interrupt signal during the
-        optimzation procedure, it will termnate earlier, taking the current values
-        of the variables without finishing, instead of raising an error.
-        If passing 'False', will raise an error when it is interrupted, which
-        will only be catched after the procedure is finished, and the obtained
-        object will not be usable.
+        When receiving an interrupt signal, whether the model should stop
+        early and leave a usable object with the parameters obtained up
+        to the point when it was interrupted (when passing 'True'), or
+        raise an interrupt exception without producing a fitted model object
+        (when passing 'False').
     nthreads : int
         Number of threads to use to parallelize computations.
         If set to 0 or less, will use the maximum available on the computer.
