@@ -108,7 +108,7 @@ SEXP wrapper_run_poismf
         Rf_asReal(w_mult), Rf_asReal(step_size),
         (Method) Rf_asInteger(method), (bool) Rf_asLogical(limit_step),
         (size_t) Rf_asInteger(niter), (size_t) Rf_asInteger(maxupd),
-        Rf_asInteger(nthreads)
+        (bool) Rf_asLogical(handle_interrupt), Rf_asInteger(nthreads)
     );
     if (ret_code == 1)
         Rf_error("Out of memory.");

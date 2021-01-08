@@ -14,7 +14,7 @@ cdef extern from "../src/poismf.h":
         const size_t dimA, const size_t dimB, const size_t k,
         const real_t l2_reg, const real_t l1_reg, const real_t w_mult, real_t step_size,
         const Method method, const bint limit_step, const size_t numiter, const size_t maxupd,
-        const int nthreads)
+        const bint handle_interrupt, const int nthreads)
     int factors_single(
         real_t *out, size_t k,
         real_t *A_old, size_t dimA,
@@ -99,8 +99,8 @@ def _run_poismf(
         dimA, dimB, k,
         l2_reg, l1_reg, w_mult, step_size,
         c_method, limit_step, niter, maxupd,
-        nthreads
-        )
+        handle_interrupt, nthreads
+    )
     if ret_code == 1:
         raise MemoryError("Could not allocate enough memory.")
     elif (ret_code == 2) and (not handle_interrupt):
