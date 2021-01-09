@@ -1,5 +1,6 @@
 import numpy as np
 cimport numpy as np
+from cpython.exc cimport PyErr_CheckSignals, PyErr_SetInterrupt
 import ctypes
 
 cdef extern from "../src/poismf.h":
@@ -101,6 +102,8 @@ def _run_poismf(
         c_method, limit_step, niter, maxupd,
         handle_interrupt, nthreads
     )
+    if (not handle_interrupt):
+        PyErr_CheckSignals()
     if ret_code == 1:
         raise MemoryError("Could not allocate enough memory.")
     elif (ret_code == 2) and (not handle_interrupt):
