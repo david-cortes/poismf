@@ -1,6 +1,6 @@
 import numpy as np
 cimport numpy as np
-from cpython.exc cimport PyErr_CheckSignals, PyErr_SetInterrupt
+from cython cimport boundscheck, nonecheck, wraparound
 import ctypes
 
 cdef extern from "../src/poismf.h":
@@ -15,7 +15,7 @@ cdef extern from "../src/poismf.h":
         const size_t dimA, const size_t dimB, const size_t k,
         const real_t l2_reg, const real_t l1_reg, const real_t w_mult, real_t step_size,
         const Method method, const bint limit_step, const size_t numiter, const size_t maxupd,
-        const bint handle_interrupt, const int nthreads)
+        const bint handle_interrupt, const int nthreads) nogil
     int factors_single(
         real_t *out, size_t k,
         real_t *A_old, size_t dimA,
@@ -23,14 +23,14 @@ cdef extern from "../src/poismf.h":
         real_t *B, real_t *Bsum,
         int maxupd, real_t l2_reg, real_t l1_new, real_t l1_old,
         real_t w_mult
-    )
+    ) nogil
     void predict_multiple(
         real_t *out,
         real_t *A, real_t *B,
         sparse_ix *ixA, sparse_ix *ixB,
         size_t n, int k,
         int nthreads
-    )
+    ) nogil
     long double eval_llk(
         real_t *A,
         real_t *B,
@@ -41,7 +41,7 @@ cdef extern from "../src/poismf.h":
         bint full_llk, bint include_missing,
         size_t dimA, size_t dimB,
         int nthreads
-    )
+    ) nogil
     int factors_multiple(
         real_t *A, real_t *B, real_t *A_old, real_t *Bsum,
         real_t *Xr, sparse_ix *Xr_indptr, sparse_ix *Xr_indices,
@@ -50,14 +50,14 @@ cdef extern from "../src/poismf.h":
         real_t step_size, size_t niter, size_t maxupd,
         Method method, bint limit_step,
         int nthreads
-    )
+    ) nogil
     int topN(
         real_t *a_vec, real_t *B, int k,
         sparse_ix *include_ix, size_t n_include,
         sparse_ix *exclude_ix, size_t n_exclude,
         sparse_ix *outp_ix, real_t *outp_score,
         size_t n_top, size_t n, int nthreads
-    )
+    ) nogil
 
 def _run_poismf(
     np.ndarray[real_t, ndim=1] Xr,
@@ -94,16 +94,16 @@ def _run_poismf(
     elif method == "pg":
         c_method = pg
 
-    cdef int ret_code = run_poismf(
-        &A[0,0], &Xr[0], &Xr_indptr[0], &Xr_indices[0],
-        &B[0,0], &Xc[0], &Xc_indptr[0], &Xc_indices[0],
-        dimA, dimB, k,
-        l2_reg, l1_reg, w_mult, step_size,
-        c_method, limit_step, niter, maxupd,
-        handle_interrupt, nthreads
-    )
-    if (not handle_interrupt):
-        PyErr_CheckSignals()
+    cdef int ret_code = 0
+    with nogil, boundscheck(False), nonecheck(False), wraparound(False):
+        ret_code = run_poismf(
+            &A[0,0], &Xr[0], &Xr_indptr[0], &Xr_indices[0],
+            &B[0,0], &Xc[0], &Xc_indptr[0], &Xc_indices[0],
+            dimA, dimB, k,
+            l2_reg, l1_reg, w_mult, step_size,
+            c_method, limit_step, niter, maxupd,
+            handle_interrupt, nthreads
+        )
     if ret_code == 1:
         raise MemoryError("Could not allocate enough memory.")
     elif (ret_code == 2) and (not handle_interrupt):
@@ -111,7 +111,8 @@ def _run_poismf(
 
 def _predict_multiple(np.ndarray[real_t, ndim=1] out, np.ndarray[real_t, ndim=2] A, np.ndarray[real_t, ndim=2] B,
                       np.ndarray[size_t, ndim=1] ix_u, np.ndarray[size_t, ndim=1] ix_i, int nthreads):
-    predict_multiple(&out[0], &A[0,0], &B[0,0], &ix_u[0], &ix_i[0], ix_u.shape[0], A.shape[1], nthreads)
+    with nogil, boundscheck(False), nonecheck(False), wraparound(False):
+        predict_multiple(&out[0], &A[0,0], &B[0,0], &ix_u[0], &ix_i[0], ix_u.shape[0], A.shape[1], nthreads)
 
 def _predict_factors(
         np.ndarray[real_t, ndim=2] A_old,
@@ -131,14 +132,16 @@ def _predict_factors(
         ptr_counts = &counts[0]
     if ix.shape[0]:
         ptr_ix = &ix[0]
-    cdef int ret_code = factors_single(
-        &out[0], <size_t> A_old.shape[1],
-        &A_old[0,0], <size_t> A_old.shape[0],
-        ptr_counts, ptr_ix, <size_t> counts.shape[0],
-        &B[0,0], &Bsum[0],
-        maxupd, l2_reg, l1_new, l1_old,
-        w_mult
-    )
+    cdef int ret_code = 0
+    with nogil, boundscheck(False), nonecheck(False), wraparound(False):
+        ret_code = factors_single(
+            &out[0], <size_t> A_old.shape[1],
+            &A_old[0,0], <size_t> A_old.shape[0],
+            ptr_counts, ptr_ix, <size_t> counts.shape[0],
+            &B[0,0], &Bsum[0],
+            maxupd, l2_reg, l1_new, l1_old,
+            w_mult
+        )
     if ret_code != 0:
         raise MemoryError("Could not allocate enough memory.")
     return out
@@ -185,15 +188,17 @@ def _predict_factors_multiple(
     elif method == "pg":
         c_method = pg
 
-    cdef int returned_val = factors_multiple(
-        ptr_A, ptr_B, ptr_A_old, ptr_Bsum,
-        ptr_Xr, ptr_Xr_indptr, ptr_Xr_indices,
-        k, dimA,
-        l2_reg, w_mult,
-        step_size, niter, maxupd,
-        c_method, limit_step,
-        nthreads
-    )
+    cdef int returned_val = 0
+    with nogil, boundscheck(False), nonecheck(False), wraparound(False):
+        returned_val = factors_multiple(
+            ptr_A, ptr_B, ptr_A_old, ptr_Bsum,
+            ptr_Xr, ptr_Xr_indptr, ptr_Xr_indices,
+            k, dimA,
+            l2_reg, w_mult,
+            step_size, niter, maxupd,
+            c_method, limit_step,
+            nthreads
+        )
 
     if returned_val:
         raise MemoryError("Could not allocate enough memory.")
@@ -220,17 +225,19 @@ def _eval_llk_test(
     cdef size_t dimA = A.shape[0]
     cdef size_t dimB = B.shape[0]
     cdef int k = A.shape[1]
-    cdef long double res = eval_llk(
-        ptr_A,
-        ptr_B,
-        ptr_ixA,
-        ptr_ixB,
-        ptr_X,
-        nnz, k,
-        full_llk, include_missing,
-        dimA, dimB,
-        nthreads
-    )
+    cdef long double res = 0
+    with nogil, boundscheck(False), nonecheck(False), wraparound(False):
+        res = eval_llk(
+            ptr_A,
+            ptr_B,
+            ptr_ixA,
+            ptr_ixB,
+            ptr_X,
+            nnz, k,
+            full_llk, include_missing,
+            dimA, dimB,
+            nthreads
+        )
     if np.isnan(res):
         raise MemoryError("Could not allocate enough memory.")
     return res
@@ -267,11 +274,12 @@ def _call_topN(
         outp_score = np.empty(top_n, dtype=c_real)
         ptr_outp_score = &outp_score[0]
 
-    topN(
-        ptr_a, ptr_B, k,
-        ptr_include, n_include,
-        ptr_exclude, n_exclude,
-        ptr_outp_ix, ptr_outp_score,
-        top_n, n, nthreads
-    )
+    with nogil, boundscheck(False), nonecheck(False), wraparound(False):
+        topN(
+            ptr_a, ptr_B, k,
+            ptr_include, n_include,
+            ptr_exclude, n_exclude,
+            ptr_outp_ix, ptr_outp_score,
+            top_n, n, nthreads
+        )
     return outp_ix, outp_score
