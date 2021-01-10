@@ -545,9 +545,7 @@ int run_poismf(
         signal(SIGINT, old_interrupt_handle);
         if (should_stop_procedure) ret_code = 2;
         should_stop_procedure = false;
-        #if !defined(_WIN32) && !defined(_WIN64) && !defined(_MSC_VER)
         if (!handle_interrupt && ret_code == 2)
-            kill(getpid(), SIGINT);
-        #endif
+            raise(SIGINT);
     return ret_code;
 }
