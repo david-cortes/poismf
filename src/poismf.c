@@ -391,6 +391,12 @@ int run_poismf(
     const Method method, const bool limit_step, const size_t numiter, const size_t maxupd,
     const bool handle_interrupt, const int nthreads)
 {
+    sig_t_ old_interrupt_handle = NULL;
+    #pragma omp critical
+    {
+        should_stop_procedure = false;
+        old_interrupt_handle = signal(SIGINT, set_interrup_global_variable);
+    }
 
     real_t *cnst_sum = (real_t*) malloc(sizeof(real_t) * k);
     real_t cnst_div;
@@ -409,9 +415,6 @@ int run_poismf(
     real_t *zeros_tncg = NULL;
     real_t *inf_tncg = NULL;
     int ret_code = 0;
-    should_stop_procedure = false;
-
-    sig_t_ old_interrupt_handle = signal(SIGINT, set_interrup_global_variable);
 
 
     if (w_mult != 1.) {
@@ -542,10 +545,14 @@ int run_poismf(
         free(Bsum_w);
         free(zeros_tncg);
         free(inf_tncg);
-        signal(SIGINT, old_interrupt_handle);
-        if (should_stop_procedure) ret_code = 2;
-        should_stop_procedure = false;
-        if (!handle_interrupt && ret_code == 2)
-            raise(SIGINT);
+        #pragma omp critical
+        {
+            signal(SIGINT, old_interrupt_handle);
+            if (should_stop_procedure && !handle_interrupt)
+                raise(SIGINT);
+            if (should_stop_procedure && ret_code != 1)
+                ret_code = 2;
+            should_stop_procedure = false;
+        }
     return ret_code;
 }
