@@ -347,6 +347,7 @@ void tncg_iteration
 }
 
 bool should_stop_procedure = false;
+bool handle_is_locked = false;
 void set_interrup_global_variable(int s)
 {
     #pragma omp critical
@@ -392,10 +393,16 @@ int run_poismf(
     const bool handle_interrupt, const int nthreads)
 {
     sig_t_ old_interrupt_handle = NULL;
+    bool has_lock_on_handle = false;
     #pragma omp critical
     {
-        should_stop_procedure = false;
-        old_interrupt_handle = signal(SIGINT, set_interrup_global_variable);
+        if (!handle_is_locked)
+        {
+            handle_is_locked = true;
+            has_lock_on_handle = true;
+            should_stop_procedure = false;
+            old_interrupt_handle = signal(SIGINT, set_interrup_global_variable);
+        }
     }
 
     real_t *cnst_sum = (real_t*) malloc(sizeof(real_t) * k);
@@ -547,12 +554,16 @@ int run_poismf(
         free(inf_tncg);
         #pragma omp critical
         {
-            signal(SIGINT, old_interrupt_handle);
-            if (should_stop_procedure && !handle_interrupt)
-                raise(SIGINT);
-            if (should_stop_procedure && ret_code != 1)
+            bool should_stop_procedure_local = should_stop_procedure;
+            if (should_stop_procedure_local && ret_code != 1)
                 ret_code = 2;
-            should_stop_procedure = false;
+            if (has_lock_on_handle) {
+                signal(SIGINT, old_interrupt_handle);
+                handle_is_locked = false;
+                should_stop_procedure = false;
+            }
+            if (should_stop_procedure_local && !handle_interrupt)
+                raise(SIGINT);
         }
     return ret_code;
 }
