@@ -38,22 +38,17 @@ pip install git+https://www.github.com/david-cortes/poismf.git
 
 Requires some BLAS library such as MKL (`pip install mkl-devel`) or OpenBLAS - will attempt to use the same as NumPy is using. Also requires a C compiler such as GCC or Visual Studio (in windows + conda, install Visual Studio Build Tools, and select package MSVC140 in the install options).
 
-
-Windows with unlucky configuration: clone or download the repository and then install with `setup.py`, e.g.:
-```
-git clone https://github.com/david-cortes/poismf.git
-cd poismf
-python setup.py install
-```
-(Note that it requires package `findblas`, can usually be installed with `pip install findblas`. Depending on configuration, in Windows you might also try `python setup.py install --compiler=msvc`).
-
-
 **Note for macOS users:** on macOS, the Python version of this package will compile **without** multi-threading capabilities. This is due to default apple's redistribution of clang not providing OpenMP modules, and aliasing it to gcc which causes confusions in build scripts. If you have a non-apple version of clang with the OpenMP modules, or if you have gcc installed, you can compile this package with multi-threading enabled by setting up an environment variable `ENABLE_OMP=1`:
 ```
 export ENABLE_OMP=1
 pip install isotree
 ```
 (Alternatively, can also pass argument enable-omp to the setup.py file: `python setup.py install enable-omp`)
+
+**Note2:** the setup script uses a PEP517 environment, which means it will create an isolated virtual environment, install its build dependencies there, compile, and then copy to the actual environment. This can causes issues - for example, if one has NumPy<1.20 and the build environment installs NumPy>=1.20, there will be a binary incompatibility which will make the package fail to import. To avoid PEP517, install with:
+```
+pip install --no-use-pep517 poismf
+```
 
 For any installation problems, please open an issue in GitHub providing information about your system (OS, BLAS, C compiler) and Python installation.
 
