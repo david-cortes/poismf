@@ -12,7 +12,7 @@
 
     BSD 2-Clause License
 
-    Copyright (c) 2020, David Cortes
+    Copyright (c) 2018-2021, David Cortes
     All rights reserved.
 
     Redistribution and use in source and binary forms, with or without

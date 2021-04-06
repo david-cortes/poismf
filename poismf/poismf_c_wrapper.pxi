@@ -15,10 +15,11 @@ cdef extern from "../src/poismf.h":
         const size_t dimA, const size_t dimB, const size_t k,
         const real_t l2_reg, const real_t l1_reg, const real_t w_mult, real_t step_size,
         const Method method, const bint limit_step, const size_t numiter, const size_t maxupd,
+        const bint early_stop, const bint reuse_prev,
         const bint handle_interrupt, const int nthreads) nogil
     int factors_single(
         real_t *out, size_t k,
-        real_t *A_old, size_t dimA,
+        real_t *Amean, bint reuse_mean,
         real_t *X, sparse_ix X_ind[], size_t nnz,
         real_t *B, real_t *Bsum,
         int maxupd, real_t l2_reg, real_t l1_new, real_t l1_old,
@@ -43,12 +44,13 @@ cdef extern from "../src/poismf.h":
         int nthreads
     ) nogil
     int factors_multiple(
-        real_t *A, real_t *B, real_t *A_old, real_t *Bsum,
+        real_t *A, real_t *B,
+        real_t *Bsum, real_t *Amean,
         real_t *Xr, sparse_ix *Xr_indptr, sparse_ix *Xr_indices,
         int k, size_t dimA,
         real_t l2_reg, real_t w_mult,
         real_t step_size, size_t niter, size_t maxupd,
-        Method method, bint limit_step,
+        Method method, bint limit_step, bint reuse_mean,
         int nthreads
     ) nogil
     int topN(
@@ -72,6 +74,7 @@ def _run_poismf(
     real_t l2_reg=1e9, real_t l1_reg=0, real_t w_mult=1.,
     real_t step_size=1e-7,
     size_t niter=10, size_t maxupd=1,
+    bint early_stop=1, bint reuse_prev=1,
     bint handle_interrupt=1,
     int nthreads=1):
 
@@ -102,6 +105,7 @@ def _run_poismf(
             dimA, dimB, k,
             l2_reg, l1_reg, w_mult, step_size,
             c_method, limit_step, niter, maxupd,
+            early_stop, reuse_prev,
             handle_interrupt, nthreads
         )
     if ret_code == 1:
@@ -115,17 +119,18 @@ def _predict_multiple(np.ndarray[real_t, ndim=1] out, np.ndarray[real_t, ndim=2]
         predict_multiple(&out[0], &A[0,0], &B[0,0], &ix_u[0], &ix_i[0], ix_u.shape[0], A.shape[1], nthreads)
 
 def _predict_factors(
-        np.ndarray[real_t, ndim=2] A_old,
         np.ndarray[real_t, ndim=1] counts,
         np.ndarray[size_t, ndim=1] ix,
         np.ndarray[real_t, ndim=2] B,
         np.ndarray[real_t, ndim=1] Bsum,
+        np.ndarray[real_t, ndim=1] Amean,
+        bint reuse_mean = 1,
         size_t maxupd = 20,
         real_t l2_reg = 1e5,
         real_t l1_new = 0., real_t l1_old = 0.,
         real_t w_mult = 1., bint limit_step = 0,
     ):
-    cdef np.ndarray[real_t, ndim=1] out = np.empty(A_old.shape[1], dtype=c_real)
+    cdef np.ndarray[real_t, ndim=1] out = np.empty(Amean.shape[0], dtype=c_real)
     cdef real_t *ptr_counts = NULL
     cdef size_t *ptr_ix = NULL
     if counts.shape[0]:
@@ -135,8 +140,8 @@ def _predict_factors(
     cdef int ret_code = 0
     with nogil, boundscheck(False), nonecheck(False), wraparound(False):
         ret_code = factors_single(
-            &out[0], <size_t> A_old.shape[1],
-            &A_old[0,0], <size_t> A_old.shape[0],
+            &out[0], <size_t> out.shape[0],
+            &Amean[0], reuse_mean,
             ptr_counts, ptr_ix, <size_t> counts.shape[0],
             &B[0,0], &Bsum[0],
             maxupd, l2_reg, l1_new, l1_old,
@@ -147,9 +152,9 @@ def _predict_factors(
     return out
 
 def _predict_factors_multiple(
-        np.ndarray[real_t, ndim=2] A_old,
         np.ndarray[real_t, ndim=2] B,
         np.ndarray[real_t, ndim=1] Bsum,
+        np.ndarray[real_t, ndim=1] Amean,
         np.ndarray[size_t, ndim=1] Xr_indptr,
         np.ndarray[size_t, ndim=1] Xr_indices,
         np.ndarray[real_t, ndim=1] Xr,
@@ -160,6 +165,7 @@ def _predict_factors_multiple(
         size_t maxupd = 1,
         method = "tncg",
         bint limit_step = 0,
+        bint reuse_mean = 1,
         int nthreads = 1
     ):
     cdef int k = <size_t> B.shape[1]
@@ -168,8 +174,8 @@ def _predict_factors_multiple(
 
     cdef real_t *ptr_A = &A[0,0]
     cdef real_t *ptr_B = &B[0,0]
-    cdef real_t *ptr_A_old = &A_old[0,0]
     cdef real_t *ptr_Bsum = &Bsum[0]
+    cdef real_t *ptr_Amean = &Amean[0]
     cdef size_t *ptr_Xr_indptr = &Xr_indptr[0]
     
     cdef size_t *ptr_Xr_indices = NULL
@@ -191,12 +197,13 @@ def _predict_factors_multiple(
     cdef int returned_val = 0
     with nogil, boundscheck(False), nonecheck(False), wraparound(False):
         returned_val = factors_multiple(
-            ptr_A, ptr_B, ptr_A_old, ptr_Bsum,
+            ptr_A, ptr_B,
+            ptr_Bsum, ptr_Amean,
             ptr_Xr, ptr_Xr_indptr, ptr_Xr_indices,
             k, dimA,
             l2_reg, w_mult,
             step_size, niter, maxupd,
-            c_method, limit_step,
+            c_method, limit_step, reuse_mean,
             nthreads
         )
 

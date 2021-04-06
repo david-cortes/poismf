@@ -30,3 +30,8 @@ test.py
 test2.py
 .Rproj.user
 poismf.Rproj
+
+src/Makevars
+config.log
+config.status
+autom4te.cache/*

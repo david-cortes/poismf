@@ -11,7 +11,7 @@
 
     BSD 2-Clause License
 
-    Copyright (c) 2020, David Cortes
+    Copyright (c) 2018-2021, David Cortes
     All rights reserved.
 
     Redistribution and use in source and binary forms, with or without
@@ -90,6 +90,8 @@ extern "C" {
         #define cblas_tgemv cblas_sgemv
     #endif
 #endif
+
+#define EPS 1e-15
 
 real_t cblas_tdot(const int n, const real_t *x, const int incx, const real_t *y, const int incy);
 void cblas_taxpy(const int n, const real_t alpha, const real_t *x, const int incx, real_t *y, const int incy);
@@ -294,7 +296,7 @@ int minimize_nonneg_cg(real_t *restrict x, int n, real_t *fun_val,
             cblas_taxpy(n, curr_step, direction_curr, 1, new_x, 1);
             if (limit_step)
                 for (size_t i = 0; i < n_szt; i++)
-                    new_x[i] = (new_x[i] >= 1e-15)? new_x[i] : 0.;
+                    new_x[i] = (new_x[i] >= EPS)? new_x[i] : 0.;
             else
                 for (size_t i = 0; i < n_szt; i++)
                     new_x[i] = (new_x[i] > 0.)? new_x[i] : 0.;

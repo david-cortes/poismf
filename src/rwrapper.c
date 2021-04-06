@@ -12,7 +12,7 @@
 
     BSD 2-Clause License
 
-    Copyright (c) 2020, David Cortes
+    Copyright (c) 2018-2021, David Cortes
     All rights reserved.
 
     Redistribution and use in source and binary forms, with or without
@@ -93,6 +93,7 @@ SEXP wrapper_run_poismf
     SEXP l2_reg, SEXP l1_reg,
     SEXP w_mult, SEXP step_size,
     SEXP niter, SEXP maxupd,
+    SEXP early_stop, SEXP reuse_prev,
     SEXP handle_interrupt, SEXP nthreads
 )
 {
@@ -100,6 +101,7 @@ SEXP wrapper_run_poismf
         Rf_error("'X' contains no non-zero entries.");
         return R_NilValue;
     }
+
     int ret_code = run_poismf(
         REAL(A), REAL(Xr), INTEGER(Xr_indptr), INTEGER(Xr_indices),
         REAL(B), REAL(Xc), INTEGER(Xc_indptr), INTEGER(Xc_indices),
@@ -108,8 +110,10 @@ SEXP wrapper_run_poismf
         Rf_asReal(w_mult), Rf_asReal(step_size),
         (Method) Rf_asInteger(method), (bool) Rf_asLogical(limit_step),
         (size_t) Rf_asInteger(niter), (size_t) Rf_asInteger(maxupd),
+        (bool) Rf_asLogical(early_stop), (bool) Rf_asLogical(reuse_prev),
         (bool) Rf_asLogical(handle_interrupt), Rf_asInteger(nthreads)
     );
+    
     if (!((bool) Rf_asLogical(handle_interrupt)))
         R_CheckUserInterrupt();
     if (ret_code == 1)
@@ -140,7 +144,7 @@ SEXP wrapper_predict_multiple
 
 SEXP wrapper_predict_factors
 (
-    SEXP A_old, SEXP k,
+    SEXP k, SEXP Amean, SEXP reuse_mean,
     SEXP counts, SEXP ix,
     SEXP B, SEXP Bsum,
     SEXP maxupd,
@@ -150,12 +154,11 @@ SEXP wrapper_predict_factors
 )
 {
     size_t k_szt = (size_t) Rf_asInteger(k);
-    size_t dimA = (size_t)Rf_xlength(A_old) / k_szt;
     SEXP out = PROTECT(Rf_allocVector(REALSXP, k_szt));
 
     int ret_code = factors_single(
         REAL(out), k_szt,
-        REAL(A_old), dimA,
+        REAL(Amean), (bool) Rf_asLogical(reuse_mean),
         REAL(counts), INTEGER(ix),
         (size_t) Rf_xlength(counts),
         REAL(B), REAL(Bsum),
@@ -175,12 +178,13 @@ SEXP wrapper_predict_factors
 
 SEXP wrapper_predict_factors_multiple
 (
-    SEXP A_old, SEXP dimA, SEXP k,
-    SEXP B, SEXP Bsum,
+    SEXP dimA, SEXP k,
+    SEXP B, SEXP Bsum, SEXP Amean,
     SEXP Xr_indptr, SEXP Xr_indices, SEXP Xr,
     SEXP l2_reg, SEXP w_mult,
     SEXP step_size, SEXP niter, SEXP maxupd,
-    SEXP method, SEXP limit_step, SEXP nthreads
+    SEXP method, SEXP limit_step,
+    SEXP reuse_mean, SEXP nthreads
 )
 {
     if ((R_xlen_t)Rf_asInteger(k) * (R_xlen_t)Rf_asInteger(dimA) <= 0)
@@ -192,7 +196,8 @@ SEXP wrapper_predict_factors_multiple
                                                 * (R_xlen_t)Rf_asInteger(dimA)));
 
     int res = factors_multiple(
-        REAL(out), REAL(B), REAL(A_old), REAL(Bsum),
+        REAL(out), REAL(B),
+        REAL(Bsum), REAL(Amean),
         REAL(Xr), INTEGER(Xr_indptr), INTEGER(Xr_indices),
         Rf_asInteger(k), Rf_asInteger(dimA),
         Rf_asReal(l2_reg), Rf_asReal(w_mult),
@@ -200,6 +205,7 @@ SEXP wrapper_predict_factors_multiple
         (size_t) Rf_asInteger(maxupd),
         (Method) Rf_asInteger(method),
         (bool) Rf_asLogical(limit_step),
+        (bool) Rf_asLogical(reuse_mean),
         Rf_asInteger(nthreads)
     );
 
@@ -298,10 +304,10 @@ SEXP large_rnd_vec
 
 
 static const R_CallMethodDef callMethods [] = {
-    {"wrapper_run_poismf", (DL_FUNC) &wrapper_run_poismf, 21},
+    {"wrapper_run_poismf", (DL_FUNC) &wrapper_run_poismf, 23},
     {"wrapper_predict_multiple", (DL_FUNC) &wrapper_predict_multiple, 6},
-    {"wrapper_predict_factors", (DL_FUNC) &wrapper_predict_factors, 11},
-    {"wrapper_predict_factors_multiple", (DL_FUNC) &wrapper_predict_factors_multiple, 16},
+    {"wrapper_predict_factors", (DL_FUNC) &wrapper_predict_factors, 12},
+    {"wrapper_predict_factors_multiple", (DL_FUNC) &wrapper_predict_factors_multiple, 17},
     {"wrapper_eval_llk", (DL_FUNC) &wrapper_eval_llk, 11},
     {"wrapper_topN", (DL_FUNC) &wrapper_topN, 9},
     {"check_size_below_int_max", (DL_FUNC) &check_size_below_int_max, 2},

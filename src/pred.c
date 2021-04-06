@@ -12,7 +12,7 @@
 
     BSD 2-Clause License
 
-    Copyright (c) 2020, David Cortes
+    Copyright (c) 2018-2021, David Cortes
     All rights reserved.
 
     Redistribution and use in source and binary forms, with or without
@@ -138,21 +138,17 @@ long double eval_llk
 
 int factors_multiple
 (
-    real_t *A, real_t *B, real_t *A_old, real_t *Bsum,
-    real_t *Xr, sparse_ix *Xr_indptr, sparse_ix *Xr_indices,
+    real_t *restrict A, real_t *restrict B,
+    real_t *restrict Bsum, real_t *restrict Amean,
+    real_t *restrict Xr, sparse_ix *restrict Xr_indptr, sparse_ix *restrict Xr_indices,
     int k, size_t dimA,
     real_t l2_reg, real_t w_mult,
     real_t step_size, size_t niter, size_t maxupd,
-    Method method, bool limit_step,
+    Method method, bool limit_step, bool reuse_mean,
     int nthreads
 )
 {
     /* Note: Bsum should already have the l1 regularization added to it */
-    #if defined(_OPENMP) && ((_OPENMP < 200801) || defined(_WIN32) || defined(_WIN64))
-    long long ix = 0;
-    #else
-    size_t ix = 0;
-    #endif
 
     size_t k_szt = (size_t) k;
     real_t cnst_div;
@@ -170,6 +166,7 @@ int factors_multiple
     int *buffer_int = NULL;
     real_t *zeros_tncg = NULL;
     real_t *inf_tncg = NULL;
+    bool unused;
 
     int return_val = 0;
 
@@ -209,16 +206,18 @@ int factors_multiple
         if (buffer_int == NULL || zeros_tncg == NULL || inf_tncg == NULL)
             goto throw_oom;
         for (size_t ix = 0; ix < k_szt; ix++)
+            #ifdef USE_FLOAT
+            inf_tncg[ix] = HUGE_VALF;
+            #else
             inf_tncg[ix] = HUGE_VAL;
+            #endif
     }
 
-    /* Initialize all values to the mean of old A */
-    sum_by_cols(A, A_old, dimA, k_szt);
-    cblas_tscal(k, 1./(real_t)dimA, A, 1);
-    #pragma omp parallel for schedule(static) num_threads(nthreads) \
-            shared(dimA, A, k_szt)
-    for (ix = 1; ix < dimA; ix++)
-        memcpy(A + (size_t)ix*k_szt, A, k_szt*sizeof(real_t));
+    /* Initialize all values to the mean of old A, or to small values */
+    if (reuse_mean || method != tncg) {
+        for (size_t ia = 0; ia < dimA; ia++)
+            memcpy(A + ia*k_szt, Amean, k_szt*sizeof(real_t));
+    }
 
     switch(method) {
         case pg:
@@ -253,9 +252,10 @@ int factors_multiple
 
         case tncg:
         {
-            tncg_iteration(A, B, Xr, Xr_indptr, Xr_indices,
+            tncg_iteration(A, B, reuse_mean, Xr, Xr_indptr, Xr_indices,
                            dimA, k_szt, Bsum, l2_reg, w_mult, maxupd,
                            buffer_arr, buffer_int,
+                           NULL, &unused,
                            zeros_tncg, inf_tncg,
                            Bsum_w, nthreads);
             break;
@@ -274,7 +274,7 @@ int factors_multiple
 int factors_single
 (
     real_t *restrict out, size_t k,
-    real_t *restrict A_old, size_t dimA,
+    real_t *restrict Amean, bool reuse_mean,
     real_t *restrict X, sparse_ix X_ind[], size_t nnz,
     real_t *restrict B, real_t *restrict Bsum,
     int maxupd, real_t l2_reg, real_t l1_new, real_t l1_old,
@@ -337,11 +337,19 @@ int factors_single
     data.Bsum = Bsum_pass;
 
     for (size_t ix = 0; ix < k; ix++)
+        #ifdef USE_FLOAT
+        inf_tncg[ix] = HUGE_VALF;
+        #else
         inf_tncg[ix] = HUGE_VAL;
+        #endif
 
-    /* Initialize to the mean of current factors */
-    sum_by_cols(out, A_old, dimA, k);
-    cblas_tscal((int)k, 1./(real_t)dimA, out, 1);
+    /* Initialize to the mean of current factors, or to small numbers */
+    if (reuse_mean) {
+        memcpy(out, Amean, k*sizeof(real_t));
+    } else {
+        for (size_t ix = 0; ix < k; ix++)
+            out[ix] = 1e-3;
+    }
 
     ret_code = tnc(
         k_int, out, &fun_val,

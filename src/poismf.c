@@ -12,7 +12,7 @@
 
     BSD 2-Clause License
 
-    Copyright (c) 2020, David Cortes
+    Copyright (c) 2018-2021, David Cortes
     All rights reserved.
 
     Redistribution and use in source and binary forms, with or without
@@ -37,6 +37,19 @@
     OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 #include "poismf.h"
+
+
+/* Interrupt handler */
+bool should_stop_procedure = false;
+bool handle_is_locked = false;
+void set_interrup_global_variable(int s)
+{
+    #pragma omp critical
+    {
+        fprintf(stderr, "Error: procedure was interrupted\n");
+        should_stop_procedure = true;
+    }
+}
 
 /* Helper functions */
 #define nonneg(x) (((x) > 0.)? (x) : 0.)
@@ -104,10 +117,9 @@ void calc_grad_pgd(real_t *out, real_t *curr, real_t *F, real_t *X, sparse_ix *X
 {
     size_t k_szt = (size_t)k;
     memset(out, 0, sizeof(real_t) * (size_t)k);
-    for (sparse_ix ix = 0; ix < nnz_this; ix++){
+    for (sparse_ix ix = 0; ix < nnz_this; ix++)
         cblas_taxpy(k, X[ix] / cblas_tdot(k, F + (size_t)Xind[ix] * k_szt, 1, curr, 1),
                     F + (size_t)Xind[ix] * k_szt, 1, out, 1);
-    }
 }
 
 /*  This function is written having in mind the A matrix being optimized,
@@ -273,6 +285,9 @@ void cg_iteration
             shared(dimA, Xr, Xr_indptr, Xr_indices, A, k, k_int, grad_fun)
     for (size_t_for ia = 0; ia < dimA; ia++)
     {
+        if (should_stop_procedure)
+            continue;
+
         data.Xr = Xr + Xr_indptr[ia];
         data.X_ind = Xr_indices + Xr_indptr[ia];
         data.nnz_this = Xr_indptr[ia + 1] - Xr_indptr[ia];
@@ -295,11 +310,12 @@ void cg_iteration
 
 void tncg_iteration
 (
-    real_t *A, real_t *B,
+    real_t *A, real_t *B, bool reuse_prev,
     real_t *Xr, sparse_ix *Xr_indptr, sparse_ix *Xr_indices,
     size_t dimA, size_t k,
     real_t *Bsum, real_t l2_reg, real_t w_mult, int maxupd,
     real_t *buffer_arr, int *buffer_int,
+    real_t *restrict buffer_unchanged, bool *has_converged,
     real_t *zeros_tncg, real_t *inf_tncg,
     real_t *Bsum_w, int nthreads
 )
@@ -316,13 +332,21 @@ void tncg_iteration
     long long ia;
     #endif
 
+    *has_converged = false;
+    size_t n_unchanged = 0;
+    real_t *prev_values;
+
     #pragma omp parallel for schedule(dynamic) num_threads(nthreads) \
-            firstprivate(data) private(niter, nfeval, fun_val) \
+            firstprivate(data) private(niter, nfeval, fun_val, prev_values) \
             shared(A, dimA, Bsum_w, k, k_int, zeros_tncg, inf_tncg, \
                    buffer_arr, buffer_int, Xr, Xr_indices, Xr_indptr, \
-                   maxupd, w_mult)
+                   maxupd, w_mult) \
+            reduction(+:n_unchanged)
     for (size_t_for ia = 0; ia < dimA; ia++)
     {
+        if (should_stop_procedure)
+            continue;
+        
         data.Xr = Xr + Xr_indptr[ia];
         data.X_ind = Xr_indices + Xr_indptr[ia];
         data.nnz_this = Xr_indptr[ia + 1] - Xr_indptr[ia];
@@ -334,6 +358,15 @@ void tncg_iteration
 
         if (w_mult != 1.) data.Bsum = Bsum_w + ia*k;
 
+        if (buffer_unchanged != NULL) {
+            prev_values = buffer_unchanged + k*(size_t)omp_get_thread_num();
+            memcpy(prev_values, A + ia*k, k*sizeof(real_t));
+        }
+
+        if (!reuse_prev)
+            for (size_t ix = 0; ix < k; ix++)
+                A[ia*k + ix] = 1e-3;
+        
         tnc(k_int, A + ia*k, &fun_val,
             buffer_arr + (size_t)omp_get_thread_num()*(size_t)22*k + (size_t)21*k,
             calc_fun_and_grad, (void*) &data,
@@ -343,17 +376,17 @@ void tncg_iteration
             1.3, &nfeval, &niter,
             buffer_arr + (size_t)omp_get_thread_num()*(size_t)22*k,
             buffer_int + (size_t)omp_get_thread_num()*k);
-    }
-}
 
-bool should_stop_procedure = false;
-bool handle_is_locked = false;
-void set_interrup_global_variable(int s)
-{
-    #pragma omp critical
-    {
-        fprintf(stderr, "Error: procedure was interrupted\n");
-        should_stop_procedure = true;
+        if (buffer_unchanged != NULL) {
+            cblas_taxpy(k_int, -1., A + ia*k, 1, prev_values, 1);
+            n_unchanged += cblas_tdot(k_int, prev_values, 1, prev_values, 1) <= 1e-4;
+        }
+    }
+
+    /* TODO: better keep an entry-by-entry array of whether they've changed,
+       then examine skipping them individually instead. */
+    if (buffer_unchanged != NULL) {
+        *has_converged = ((double)n_unchanged / (double)dimA) >= .95;
     }
 }
 
@@ -378,6 +411,8 @@ void set_interrup_global_variable(int s)
     limit_step                : Whether to limit CG step sizes to zero-out one variable per step
     numiter                   : Number of iterations for which to run the procedure
     maxupd                    : Number of updates to the same vector per iteration
+    early_stop                : Whether to stop early if the values do not change much after an iteration (TNCG)
+    reuse_prev                : Whether to re-use previous values as starting point (TNCG)
     handle_interrupt          : Whether to stop gracefully after a SIGINT, returning code 2 instead.
     nthreads                  : Number of threads to use
 Matrices A and B are optimized in-place,
@@ -390,6 +425,7 @@ int run_poismf(
     const size_t dimA, const size_t dimB, const size_t k,
     const real_t l2_reg, const real_t l1_reg, const real_t w_mult, real_t step_size,
     const Method method, const bool limit_step, const size_t numiter, const size_t maxupd,
+    const bool early_stop, const bool reuse_prev,
     const bool handle_interrupt, const int nthreads)
 {
     sig_t_ old_interrupt_handle = NULL;
@@ -421,6 +457,8 @@ int run_poismf(
     int *buffer_int = NULL;
     real_t *zeros_tncg = NULL;
     real_t *inf_tncg = NULL;
+    real_t *buffer_unchanged = NULL;
+    bool stopped_earlyA = false, stopped_earlyB = false;
     int ret_code = 0;
 
 
@@ -435,6 +473,11 @@ int run_poismf(
         inf_tncg = (real_t*)malloc(sizeof(real_t) * k);
         if (buffer_int == NULL || zeros_tncg == NULL || inf_tncg == NULL)
             goto throw_oom;
+        if (early_stop) {
+            buffer_unchanged = (real_t*)malloc((size_t)nthreads*k*sizeof(real_t));
+            if (buffer_unchanged == NULL)
+                goto throw_oom;
+        }
         for (size_t ix = 0; ix < k; ix++)
             inf_tncg[ix] = HUGE_VAL;
     }
@@ -453,6 +496,56 @@ int run_poismf(
 
         /* Constants to use later */
         cnst_div = 1. / (1. + 2. * l2_reg * step_size);
+        sum_by_cols(cnst_sum, A, dimA, k);
+        if (l1_reg > 0.)
+            for (size_t kk = 0; kk < k; kk++) cnst_sum[kk] += l1_reg;
+        if (w_mult != 1.)
+            adjustment_Bsum(A, cnst_sum, Bsum_w,
+                            Xc_indices, Xc_indptr, dimB, k,
+                            w_mult, nthreads);
+
+        switch(method) {
+            case pg:
+            {
+                if (w_mult == 1.)
+                    cblas_tscal(k_int, neg_step_sz, cnst_sum, 1);
+                else
+                    dscal_large(dimB*k, neg_step_sz, Bsum_w);
+                pg_iteration(B, A, Xc, Xc_indptr, Xc_indices,
+                             dimB, k, cnst_div, cnst_sum, Bsum_w, step_size,
+                             w_mult, maxupd, buffer_arr, nthreads);
+
+                /* Decrease step size after taking PGD steps in both matrices */
+                step_size *= 0.5;
+                neg_step_sz = -step_size;
+                break;
+            }
+
+            case cg:
+            {
+                cg_iteration(B, A, Xc, Xc_indptr, Xc_indices,
+                             dimB, k, limit_step, cnst_sum,
+                             l2_reg, w_mult, maxupd,
+                             buffer_arr, Bsum_w, nthreads);
+                break;
+            }
+
+            case tncg:
+            {
+                if (!stopped_earlyB)
+                tncg_iteration(B, A, reuse_prev, Xc, Xc_indptr, Xc_indices,
+                               dimB, k, cnst_sum, l2_reg, w_mult, maxupd,
+                               buffer_arr, buffer_int,
+                               buffer_unchanged, &stopped_earlyB,
+                               zeros_tncg, inf_tncg,
+                               Bsum_w, nthreads);
+                break;
+            }
+        }
+
+        if (should_stop_procedure) goto cleanup;
+
+         /* Same procedure repeated for the A matrix */
         sum_by_cols(cnst_sum, B, dimB, k);
         if (l1_reg > 0.)
             for (size_t kk = 0; kk < k; kk++) cnst_sum[kk] += l1_reg;
@@ -486,63 +579,19 @@ int run_poismf(
 
             case tncg:
             {
-                tncg_iteration(A, B, Xr, Xr_indptr, Xr_indices,
+                if (!stopped_earlyA)
+                tncg_iteration(A, B, reuse_prev, Xr, Xr_indptr, Xr_indices,
                                dimA, k, cnst_sum, l2_reg, w_mult, maxupd,
                                buffer_arr, buffer_int,
+                               buffer_unchanged, &stopped_earlyA,
                                zeros_tncg, inf_tncg,
                                Bsum_w, nthreads);
                 break;
             }
         }
 
-        if (should_stop_procedure) goto cleanup;
-
-
-        /* Same procedure repeated for the B matrix */
-        sum_by_cols(cnst_sum, A, dimA, k);
-        if (l1_reg > 0.)
-            for (size_t kk = 0; kk < k; kk++) cnst_sum[kk] += l1_reg;
-        if (w_mult != 1.)
-            adjustment_Bsum(A, cnst_sum, Bsum_w,
-                            Xc_indices, Xc_indptr, dimB, k,
-                            w_mult, nthreads);
-
-        switch(method) {
-            case pg:
-            {
-                if (w_mult == 1.)
-                    cblas_tscal(k_int, neg_step_sz, cnst_sum, 1);
-                else
-                    dscal_large(dimB*k, neg_step_sz, Bsum_w);
-                pg_iteration(B, A, Xc, Xc_indptr, Xc_indices,
-                             dimB, k, cnst_div, cnst_sum, Bsum_w, step_size,
-                             w_mult, maxupd, buffer_arr, nthreads);
-
-                /* Decrease step size after taking PGD steps in both matrices */
-                step_size *= 0.5;
-                neg_step_sz = -step_size;
-                break;
-            }
-
-            case cg:
-            {
-                cg_iteration(B, A, Xr, Xc_indptr, Xc_indices,
-                             dimB, k, limit_step, cnst_sum,
-                             l2_reg, w_mult, maxupd,
-                             buffer_arr, Bsum_w, nthreads);
-                break;
-            }
-
-            case tncg:
-            {
-                tncg_iteration(B, A, Xc, Xc_indptr, Xc_indices,
-                               dimB, k, cnst_sum, l2_reg, w_mult, maxupd,
-                               buffer_arr, buffer_int,
-                               zeros_tncg, inf_tncg,
-                               Bsum_w, nthreads);
-                break;
-            }
-        }
+        if (stopped_earlyA && stopped_earlyB)
+            break;
     }
 
     cleanup:
@@ -550,6 +599,7 @@ int run_poismf(
         free(buffer_arr);
         free(buffer_int);
         free(Bsum_w);
+        free(buffer_unchanged);
         free(zeros_tncg);
         free(inf_tncg);
         #pragma omp critical

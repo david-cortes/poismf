@@ -14,6 +14,8 @@ poismf(
   maxupd = "auto",
   limit_step = TRUE,
   initial_step = 1e-07,
+  early_stop = TRUE,
+  reuse_prev = FALSE,
   weight_mult = 1,
   init_type = "gamma",
   seed = 1,
@@ -68,13 +70,16 @@ local optima, nor tends to result in sparse factors.
 \item{l2_reg}{Strength of L2 regularization. It is recommended to use small values
 along with `method='tncg'`, very large values along with `method='pg'`,
 and medium to large values with `method='cg'`. If passing `"auto"`,
-will set it to `10^3` for TNCG, `10^5` for CG, and `10^9` for PG.}
+will set it to `10^3` TNCG, `10^4` for CG, and `10^9` for PG.}
 
 \item{l1_reg}{Strength of L1 regularization. Not recommended.}
 
 \item{niter}{Number of alternating iterations to perform. One iteration denotes an update
-over both matrices. If passing `'auto'`, will set it to 50 for TNCG,
-25 for CG, and 10 for PG.}
+over both matrices. If passing `'auto'`, will set it to 10 for TNCG and PG,
+or to 30 for CG.
+
+Using more iterations usually leads to better results for CG and TNCG, at the
+expense of longer fitting times.}
 
 \item{maxupd}{Maximum number of updates to each user/item vector within an iteration.
 Note: for 'method=TNCG', this means maximum number of \bold{function
@@ -98,6 +103,20 @@ with a line search.}
 reach converge faster, but are more likely to result in failed optimization.
 Ignored when passing `method='tncg'` or `method='cg'`, as those will
 perform a line seach instead.}
+
+\item{early_stop}{In the TNCG method, whether to stop before reaching the maximum number of
+iterations if the updates do not change the factors significantly or at all.}
+
+\item{reuse_prev}{In the TNCG method, whether to reuse the factors obtained in the previous
+iteration as starting point for the optimization procedure. This has the
+effect of reaching convergence much quicker, but will oftentimes lead to
+slightly worse solutions.
+
+Setting it to `TRUE` has the side effect of potentially making the factors
+obtained when fitting the model different from the factors obtained after
+calling the `factors` function with the same data the model was fit.
+
+For the other methods, this is always assumed `TRUE`.}
 
 \item{weight_mult}{Extra multiplier for the weight of the positive entries over the missing
 entries in the matrix to factorize. Be aware that Poisson likelihood will
@@ -197,11 +216,7 @@ model <- poismf(X, k=5, method="cg", nthreads=1)
 ### better quality, but much slower (truncated Newton-CG)
 model <- poismf(X, k=5, method="tncg", nthreads=1)
 
-\donttest{
-### for getting sparse factors
-model <- poismf(X, k=50, method="tncg")
-mean(model$A == 0.)
-}
+### (for sparse factors, use higher 'k' and larger data)
 
 ### predict functionality (chosen entries in X)
 ### predict entry [1, 10] (row 1, column 10)

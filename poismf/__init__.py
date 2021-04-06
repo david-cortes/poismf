@@ -63,13 +63,16 @@ class PoisMF:
         Strength of L2 regularization. It is recommended to use small values
         along with ``method='tncg'``, very large values along with ``method='pg'``,
         and medium to large values with ``method='cg'``. If passing ``"auto"``,
-        will set it to 10^3 for TNCG, 10^5 for CG, and 10^9 for PG.
+        will set it to 10^3 for TNCG, 10^4 for CG, and 10^9 for PG.
     l1_reg : float
         Strength of L1 regularization. Not recommended.
     niter : int
         Number of alternating iterations to perform. One iteration denotes an update
-        over both matrices. If passing ``'auto'``, will set it to 50 for TNCG,
-        25 for CG, and 10 for PG.
+        over both matrices. If passing ``'auto'``, will set it to 10 for TNCG and PG,
+        or 30 for CG.
+
+        Using more iterations usually leads to better results for CG and TNCG, at the
+        expense of longer fitting times.
     maxupd : int
         Maximum number of updates to each user/item vector within an iteration.
         **Note: for 'method=TNCG', this means maximum number of function
@@ -93,6 +96,20 @@ class PoisMF:
         reach converge faster, but are more likely to result in failed optimization.
         Ignored when passing ``method='tncg'`` or ``method='cg'``, as those will
         perform a line seach instead.
+    early_stop : bool
+        In the TNCG method, whether to stop before reaching the maximum number of
+        iterations if the updates do not change the factors significantly or at all.
+    reuse_prev : bool
+        In the TNCG method, whether to reuse the factors obtained in the previous
+        iteration as starting point for the optimization procedure. This has the
+        effect of reaching convergence much quicker, but will oftentimes lead to
+        slightly worse solutions.
+
+        Setting it to ``True`` has the side effect of potentially making the factors
+        obtained when fitting the model different from the factors obtained after
+        calling the ``predict_factors`` function with the same data the model was fit.
+        
+        For the other methods, this is always assumed ``True``.
     weight_mult : float > 0
         Extra multiplier for the weight of the positive entries over the missing
         entries in the matrix to factorize. Be aware that Poisson likelihood will
@@ -169,6 +186,7 @@ class PoisMF:
                  l2_reg = "auto", l1_reg = 0.0,
                  niter = "auto", maxupd = "auto",
                  limit_step = True, initial_step = 1e-7,
+                 early_stop = True, reuse_prev = False,
                  weight_mult = 1.0, init_type = "gamma", random_state = 1,
                  reindex = True, copy_data = True, produce_dicts = False,
                  use_float = False, handle_interrupt = True, nthreads = -1):
@@ -180,11 +198,11 @@ class PoisMF:
 
         ## default hyperparameters
         if l2_reg == "auto":
-            l2_reg = {"tncg":1e3, "cg":1e5, "pg":1e9}[method]
+            l2_reg = {"tncg":1e3, "cg":1e4, "pg":1e9}[method]
         if maxupd == "auto":
             maxupd = {"tncg":5*k, "cg":5, "pg":10}[method]
         if niter == "auto":
-            niter = {"tncg":50, "cg":25, "pg":10}[method]
+            niter = {"tncg":10, "cg":30, "pg":10}[method]
 
         ## checking inputs
         assert k > 0
@@ -227,6 +245,8 @@ class PoisMF:
         self.maxupd = maxupd
         self.method = method
         self.limit_step = bool(limit_step)
+        self.early_stop = bool(early_stop)
+        self.reuse_prev = bool(reuse_prev)
         self.use_float = bool(use_float)
         self._dtype = ctypes.c_float if self.use_float else ctypes.c_double
         self.handle_interrupt = bool(handle_interrupt)
@@ -352,8 +372,10 @@ class PoisMF:
             self.method, self.limit_step,
             self.l2_reg, self.l1_reg, self.weight_mult,
             self.initial_step, self.niter, self.maxupd,
+            self.early_stop, self.reuse_prev,
             self.handle_interrupt, self.nthreads)
-        self.Bsum = self.B.sum(axis = 0).astype(self._dtype) + self.l1_reg
+        self.Bsum = self.B.sum(axis = 0) + self.l1_reg
+        self.Amean = self.A.mean(axis = 0)
 
     def fit_unsafe(self, A, B, Xcsr, Xcsc):
         """
@@ -478,8 +500,10 @@ class PoisMF:
         ix, cnt = self._process_data_single(X)
         l2_reg, l1_reg = self._process_reg_params(l2_reg, l1_reg)
         c_funs = c_funs_float if self.use_float else c_funs_double
-        a_vec = c_funs._predict_factors(self.A, cnt, ix,
+        a_vec = c_funs._predict_factors(cnt, ix,
                                         self.B, self.Bsum,
+                                        self.Amean,
+                                        self.reuse_prev,
                                         int(maxupd),
                                         float(l2_reg),
                                         float(l1_reg), float(self.l1_reg),
@@ -585,9 +609,9 @@ class PoisMF:
         Xr_indptr, Xr_indices, Xr, user_mapping_ = self._process_X_new_users(X)
         c_funs = c_funs_float if self.use_float else c_funs_double
         A = c_funs._predict_factors_multiple(
-                self.A,
                 self.B,
                 self.Bsum,
+                self.Amean,
                 Xr_indptr,
                 Xr_indices,
                 Xr,
@@ -598,6 +622,7 @@ class PoisMF:
                 self.maxupd,
                 self.method,
                 self.limit_step,
+                self.reuse_prev,
                 self.nthreads
         )
 

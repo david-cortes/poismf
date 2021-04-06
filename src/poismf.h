@@ -12,7 +12,7 @@
 
     BSD 2-Clause License
 
-    Copyright (c) 2020, David Cortes
+    Copyright (c) 2018-2021, David Cortes
     All rights reserved.
 
     Redistribution and use in source and binary forms, with or without
@@ -206,11 +206,12 @@ void cg_iteration
 );
 void tncg_iteration
 (
-    real_t *A, real_t *B,
+    real_t *A, real_t *B, bool reuse_prev,
     real_t *Xr, sparse_ix *Xr_indptr, sparse_ix *Xr_indices,
     size_t dimA, size_t k,
     real_t *Bsum, real_t l2_reg, real_t w_mult, int maxupd,
     real_t *buffer_arr, int *buffer_int,
+    real_t *buffer_unchanged, bool *has_converged,
     real_t *zeros_tncg, real_t *inf_tncg,
     real_t *Bsum_w, int nthreads
 );
@@ -224,6 +225,7 @@ int run_poismf(
     const size_t dimA, const size_t dimB, const size_t k,
     const real_t l2_reg, const real_t l1_reg, const real_t w_mult, real_t step_size,
     const Method method, const bool limit_step, const size_t numiter, const size_t maxupd,
+    const bool early_stop, const bool reuse_prev,
     const bool handle_interrupt, const int nthreads);
 
 /* topN.c */
@@ -263,18 +265,19 @@ long double eval_llk
 );
 int factors_multiple
 (
-    real_t *A, real_t *B, real_t *A_old, real_t *Bsum,
+    real_t *A, real_t *B,
+    real_t *Bsum, real_t *Amean,
     real_t *Xr, sparse_ix *Xr_indptr, sparse_ix *Xr_indices,
     int k, size_t dimA,
     real_t l2_reg, real_t w_mult,
     real_t step_size, size_t niter, size_t maxupd,
-    Method method, bool limit_step,
+    Method method, bool limit_step, bool reuse_mean,
     int nthreads
 );
 int factors_single
 (
     real_t *restrict out, size_t k,
-    real_t *restrict A_old, size_t dimA,
+    real_t *restrict Amean, bool reuse_mean,
     real_t *restrict X, sparse_ix X_ind[], size_t nnz,
     real_t *restrict B, real_t *restrict Bsum,
     int maxupd, real_t l2_reg, real_t l1_new, real_t l1_old,

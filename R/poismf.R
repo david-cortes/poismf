@@ -65,11 +65,14 @@
 #' @param l2_reg Strength of L2 regularization. It is recommended to use small values
 #' along with `method='tncg'`, very large values along with `method='pg'`,
 #' and medium to large values with `method='cg'`. If passing `"auto"`,
-#' will set it to `10^3` for TNCG, `10^5` for CG, and `10^9` for PG.
+#' will set it to `10^3` TNCG, `10^4` for CG, and `10^9` for PG.
 #' @param l1_reg Strength of L1 regularization. Not recommended.
 #' @param niter Number of alternating iterations to perform. One iteration denotes an update
-#' over both matrices. If passing `'auto'`, will set it to 50 for TNCG,
-#' 25 for CG, and 10 for PG.
+#' over both matrices. If passing `'auto'`, will set it to 10 for TNCG and PG,
+#' or to 30 for CG.
+#' 
+#' Using more iterations usually leads to better results for CG and TNCG, at the
+#' expense of longer fitting times.
 #' @param maxupd Maximum number of updates to each user/item vector within an iteration.
 #' Note: for 'method=TNCG', this means maximum number of \bold{function
 #' evaluations} rather than number of updates, so it should be higher.
@@ -84,6 +87,18 @@
 #' reach converge faster, but are more likely to result in failed optimization.
 #' Ignored when passing `method='tncg'` or `method='cg'`, as those will
 #' perform a line seach instead.
+#' @param early_stop In the TNCG method, whether to stop before reaching the maximum number of
+#' iterations if the updates do not change the factors significantly or at all.
+#' @param reuse_prev In the TNCG method, whether to reuse the factors obtained in the previous
+#' iteration as starting point for the optimization procedure. This has the
+#' effect of reaching convergence much quicker, but will oftentimes lead to
+#' slightly worse solutions.
+#' 
+#' Setting it to `TRUE` has the side effect of potentially making the factors
+#' obtained when fitting the model different from the factors obtained after
+#' calling the `factors` function with the same data the model was fit.
+#' 
+#' For the other methods, this is always assumed `TRUE`.
 #' @param weight_mult Extra multiplier for the weight of the positive entries over the missing
 #' entries in the matrix to factorize. Be aware that Poisson likelihood will
 #' implicitly put more weight on the non-missing entries already. Passing larger
@@ -165,11 +180,7 @@
 #' ### better quality, but much slower (truncated Newton-CG)
 #' model <- poismf(X, k=5, method="tncg", nthreads=1)
 #' 
-#' \donttest{
-#' ### for getting sparse factors
-#' model <- poismf(X, k=50, method="tncg")
-#' mean(model$A == 0.)
-#' }
+#' ### (for sparse factors, use higher 'k' and larger data)
 #' 
 #' ### predict functionality (chosen entries in X)
 #' ### predict entry [1, 10] (row 1, column 10)
@@ -196,6 +207,7 @@ poismf <- function(X, k = 50, method = "tncg",
                    l2_reg = "auto", l1_reg = 0,
                    niter = "auto", maxupd = "auto",
                    limit_step = TRUE, initial_step = 1e-7,
+                   early_stop = TRUE, reuse_prev = FALSE,
                    weight_mult = 1, init_type = "gamma", seed = 1,
                    handle_interrupt = TRUE,
                    nthreads = parallel::detectCores()) {
@@ -207,9 +219,9 @@ poismf <- function(X, k = 50, method = "tncg",
     if (NROW(k) > 1 || k < 1) { stop("'k' must be a positive integer.") }
     
     if (l2_reg == "auto")
-        l2_reg <- switch(method, "tncg"=1e3, "cg"=1e5, "pg"=1e9)
+        l2_reg <- switch(method, "tncg"=1e3,  "cg"=1e4, "pg"=1e9)
     if (niter == "auto")
-        niter <- switch(method, "tncg"=50L, "cg"=25L, "pg"=10L)
+        niter <-  switch(method, "tncg"=10L,  "cg"=30L, "pg"=10L)
     if (maxupd == "auto")
         maxupd <- switch(method, "tncg"=5L*k, "cg"=5L, "pg"=1L)
     
@@ -222,7 +234,7 @@ poismf <- function(X, k = 50, method = "tncg",
     if (l1_reg < 0. | l2_reg < 0.) {stop("Regularization parameters must be non-negative.")}
     if (weight_mult <= 0.) { stop("'weight_mult' must be a positive number.") }
     if (init_type != "gamma" & init_type != "uniform")
-        {stop("'init_type' must be one of 'gamma' or 'uniform'.")}
+        stop("'init_type' must be one of 'gamma' or 'uniform'.")
     
     ### Cast them to required type
     k            <- as.integer(k)
@@ -232,14 +244,16 @@ poismf <- function(X, k = 50, method = "tncg",
     limit_step   <- as.logical(limit_step)
     weight_mult  <- as.numeric(weight_mult)
     initial_step <- as.numeric(initial_step)
+    early_stop   <- as.logical(early_stop)
+    reuse_prev   <- as.logical(reuse_prev)
     niter        <- as.integer(niter)
     maxupd       <- as.integer(maxupd)
     nthreads     <- as.integer(nthreads)
     
     method_code  <- switch(method,
-                           "tncg" = 1,
-                           "cg"   = 2,
-                           "pg"   = 3)
+                           "tncg" = 1L,
+                           "cg"   = 2L,
+                           "pg"   = 3L)
     method_code  <- as.integer(method_code)
     handle_interrupt <- as.logical(handle_interrupt)
     
@@ -269,6 +283,7 @@ poismf <- function(X, k = 50, method = "tncg",
         ## Also: 'Matrix' is zero-based, whereas 'SparseM' is one-based, except
         ## for vectors in 'Matrix' which are one-based; but when creating a CSC matrix, it will
         ## require the indices to be one-based and the indices pointers to be zero-based.
+        ## Update: Matrix also has CSR
         Xcsr <- Matrix::sparseMatrix(i = ix_col, j = ix_row, x = xflat, repr = "C")
         Xcsc <- Matrix::sparseMatrix(i = ix_row, j = ix_col, x = xflat, repr = "C")
     } else if ("matrix" %in% class(X)) {
@@ -278,9 +293,11 @@ poismf <- function(X, k = 50, method = "tncg",
         Xcsr <- as(Matrix::t(X), "dgCMatrix")
         Xcsc <- as(X, "dgCMatrix")
     } else if ("dgCMatrix" %in% class(X)) {
+        ### TODO: here need to change to accommodate MatrixExtra
         Xcsr <- Matrix::t(X)
         Xcsc <- X
     } else if ("matrix.coo" %in% class(X)) {
+        ### TODO: 'Matrix' now has functions to convert from SparseM, should use those instead
         if (requireNamespace("SparseM", quietly = TRUE)) {
             Xcsr <- SparseM::as.matrix.csr(X)
             Xcsc <- SparseM::as.matrix.csc(X)
@@ -367,7 +384,8 @@ poismf <- function(X, k = 50, method = "tncg",
               A, B, dimA, dimB, k,
               method_code, limit_step, l2_reg, l1_reg,
               weight_mult, initial_step,
-              niter, maxupd, handle_interrupt, nthreads)
+              niter, maxupd, early_stop, reuse_prev,
+              handle_interrupt, nthreads)
     } else { ## 'Matrix'
         .Call("wrapper_run_poismf",
               Xcsr@x, Xcsr@i, Xcsr@p,
@@ -375,16 +393,19 @@ poismf <- function(X, k = 50, method = "tncg",
               A, B, dimA, dimB, k,
               method_code, limit_step, l2_reg, l1_reg,
               weight_mult, initial_step,
-              niter, maxupd, handle_interrupt, nthreads)
+              niter, maxupd, early_stop, reuse_prev,
+              handle_interrupt, nthreads)
     }
     
     ### Return all info
     Bsum <- rowSums(matrix(B, nrow = k, ncol = dimB)) + l1_reg
+    Amean <- rowMeans(matrix(A, nrow = k, ncol = dimA))
     
     out <- list(
         A = A,
         B = B,
         Bsum = Bsum,
+        Amean = Amean,
         k = k,
         method = method,
         limit_step = limit_step,
@@ -394,6 +415,8 @@ poismf <- function(X, k = 50, method = "tncg",
         niter = niter,
         maxupd = maxupd,
         initial_step = initial_step,
+        early_stop = early_stop,
+        reuse_prev = reuse_prev,
         init_type = init_type,
         dimA = dimA,
         dimB = dimB,
@@ -476,6 +499,7 @@ poismf__unsafe <- function(A, B, Xcsr, Xcsc, k, method="tncg",
                            niter="auto",
                            maxupd="auto",
                            limit_step=TRUE, initial_step=1e-7,
+                           early_stop = TRUE, reuse_prev = TRUE,
                            weight_mult=1.,
                            nthreads=parallel::detectCores(),
                            init_type=NULL,
@@ -490,9 +514,9 @@ poismf__unsafe <- function(A, B, Xcsr, Xcsc, k, method="tncg",
     dimA <- NROW(A) / (ifelse(is.null(dim(A)), k, 1))
     dimB <- NROW(B) / (ifelse(is.null(dim(B)), k, 1))
     method_code <- switch(method,
-                          "tncg" = 1,
-                          "cg"   = 2,
-                          "pg"   = 3)
+                          "tncg" = 1L,
+                          "cg"   = 2L,
+                          "pg"   = 3L)
     method_code <- as.integer(method_code)
     .Call("wrapper_run_poismf",
           Xcsr@x, Xcsr@i, Xcsr@p,
@@ -500,11 +524,13 @@ poismf__unsafe <- function(A, B, Xcsr, Xcsc, k, method="tncg",
           A, B, dimA, dimB, k,
           method_code, limit_step, l2_reg, l1_reg,
           weight_mult, initial_step,
-          niter, maxupd, handle_interrupt, nthreads)
+          niter, maxupd, early_stop, reuse_prev,
+          handle_interrupt, nthreads)
     out <- list(
         A = A,
         B = B,
         Bsum = rowSums(matrix(B, nrow=k, ncol=dimB)) + l1_reg,
+        Amean = rowMeans(matrix(A, nrow=k, ncol=dimA)),
         k = k,
         method = method,
         limit_step = limit_step,
@@ -514,6 +540,8 @@ poismf__unsafe <- function(A, B, Xcsr, Xcsc, k, method="tncg",
         niter = niter,
         maxupd = maxupd,
         initial_step = initial_step,
+        early_stop = early_stop,
+        reuse_prev = reuse_prev,
         init_type = "custom",
         dimA = dimA,
         dimB = dimB,
@@ -583,7 +611,7 @@ factors.single <- function(model, X, l2_reg = model$l2_reg, l1_reg = model$l1_re
     }
     
     return(.Call("wrapper_predict_factors",
-                 model$A, model$k,
+                 model$k, model$Amean, model$reuse_prev,
                  xval, xind,
                  model$B, model$Bsum,
                  maxupd, l2_reg,
@@ -720,13 +748,13 @@ factors <- function(model, X, add_names=TRUE) {
     method_code <- as.integer(method_code)
     
     Anew <- .Call("wrapper_predict_factors_multiple",
-                  model$A, as.integer(dimA), model$k,
-                  model$B, model$Bsum,
+                  as.integer(dimA), model$k,
+                  model$B, model$Bsum, model$Amean,
                   Xr_indptr, Xr_indices, Xr_values,
                   model$l2_reg, model$weight_mult,
                   model$initial_step, model$niter, model$maxupd,
                   method_code, model$limit_step,
-                  model$nthreads)
+                  model$reuse_prev, model$nthreads)
     if (is.null(Anew))
         stop("Memory error.")
     Anew <- t(matrix(Anew, nrow=model$k))

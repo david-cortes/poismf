@@ -55,6 +55,12 @@
 
 #include "poismf.h"
 
+#ifdef USE_FLOAT
+    #define EPSILON FLT_EPSILON
+#else
+    #define EPSILON DBL_EPSILON
+#endif
+
 #define logical bool
 #define TNC_FALSE false
 #define TNC_TRUE true
@@ -280,8 +286,15 @@ int tnc(int n, real_t x[], real_t *f, real_t g[], tnc_function * function,
             goto cleanup;
         }
         free_low = TNC_TRUE;
+        #ifndef _MSC_VER
+        #pragma omp simd
+        #endif
         for (i = 0; i < n; i++) {
+            #ifdef USE_FLOAT
+            low[i] = -HUGE_VALF;
+            #else
             low[i] = -HUGE_VAL;
+            #endif
         }
     }
 
@@ -292,8 +305,15 @@ int tnc(int n, real_t x[], real_t *f, real_t g[], tnc_function * function,
             goto cleanup;
         }
         free_up = TNC_TRUE;
+        #ifndef _MSC_VER
+        #pragma omp simd
+        #endif
         for (i = 0; i < n; i++) {
+            #ifdef USE_FLOAT
+            up[i] = HUGE_VALF;
+            #else
             up[i] = HUGE_VAL;
+            #endif
         }
     }
 
@@ -385,7 +405,7 @@ int tnc(int n, real_t x[], real_t *f, real_t g[], tnc_function * function,
     }
 
     /* Default values for parameters */
-    rteps = sqrt(DBL_EPSILON);
+    rteps = sqrt(EPSILON);
 
     if (stepmx < rteps * 10.0) {
         stepmx = 1.0e1;
@@ -408,7 +428,7 @@ int tnc(int n, real_t x[], real_t *f, real_t g[], tnc_function * function,
     if (maxCGit > n) {
         maxCGit = n;
     }
-    if (accuracy <= DBL_EPSILON) {
+    if (accuracy <= EPSILON) {
         accuracy = rteps;
     }
     if (ftol < 0.0) {
@@ -506,14 +526,22 @@ static void setConstraints(int n, real_t *restrict x, int pivot[], real_t *restr
         if (xscale[i] == 0.0) {
             pivot[i] = 2;
         }
+        #ifdef USE_FLOAT
+        else if (low[i] != -HUGE_VALF &&
+                 (x[i] * xscale[i] + xoffset[i] - low[i] <=
+                  FLT_EPSILON * 10.0 * (fabs(low[i]) + 1.0))) {
+             pivot[i] = -1;
+        }
+        #else
         else if (low[i] != -HUGE_VAL &&
                  (x[i] * xscale[i] + xoffset[i] - low[i] <=
                   DBL_EPSILON * 10.0 * (fabs(low[i]) + 1.0))) {
              pivot[i] = -1;
         }
+        #endif
         // else if (up[i] != HUGE_VAL &&
         //          (x[i] * xscale[i] + xoffset[i] - up[i] >=
-        //           DBL_EPSILON * 10.0 * (fabs(up[i]) + 1.0))) {
+        //           EPSILON * 10.0 * (fabs(up[i]) + 1.0))) {
         //     pivot[i] = 1;
         // }
         else {
@@ -697,7 +725,7 @@ static tnc_rc tnc_minimize(int n, real_t x[],
 
         /* Rescale function if necessary */
         newscale = dnrm21(n, g);
-        if ((newscale > DBL_EPSILON) && (fabs(log10(newscale)) > rescale)) {
+        if ((newscale > EPSILON) && (fabs(log10(newscale)) > rescale)) {
             newscale = 1.0 / newscale;
 
             *f *= newscale;
@@ -767,7 +795,7 @@ static tnc_rc tnc_minimize(int n, real_t x[],
         oldgtp = ddot1(n, pk, g);
 
         /* Maximum unconstrained step length */
-        ustpmax = stepmx / (dnrm21(n, pk) + DBL_EPSILON);
+        ustpmax = stepmx / (dnrm21(n, pk) + EPSILON);
 
         /* Maximum constrained step length */
         spe = stepMax(ustpmax, n, x, pk, pivot, low, up, xscale, xoffset);
@@ -808,7 +836,7 @@ static tnc_rc tnc_minimize(int n, real_t x[],
 
             /* If we went up to the maximum constrained step,
                a new constraint was encountered */
-            if (alpha - spe >= -DBL_EPSILON * 10.0) {
+            if (alpha - spe >= -EPSILON * 10.0) {
                 newcon = TNC_TRUE;
             }
             else {
@@ -1057,7 +1085,7 @@ static logical addConstraint(int n, real_t *restrict x, real_t *restrict p, int 
     for (i = 0; i < n; i++) {
         if ((pivot[i] == 0) && (p[i] != 0.0)) {
             if (p[i] < 0.0) {
-                tol = DBL_EPSILON * 10.0 * (fabs(low[i]) + 1.0);
+                tol = EPSILON * 10.0 * (fabs(low[i]) + 1.0);
                 if (x[i] * xscale[i] + xoffset[i] - low[i] <= tol) {
                     pivot[i] = -1;
                     x[i] = (low[i] - xoffset[i]) / xscale[i];
@@ -1065,7 +1093,7 @@ static logical addConstraint(int n, real_t *restrict x, real_t *restrict p, int 
                 }
             }
             // if (p[i] < 0.0 && low[i] != -HUGE_VAL) {
-            //     tol = DBL_EPSILON * 10.0 * (fabs(low[i]) + 1.0);
+            //     tol = EPSILON * 10.0 * (fabs(low[i]) + 1.0);
             //     if (x[i] * xscale[i] + xoffset[i] - low[i] <= tol) {
             //         pivot[i] = -1;
             //         x[i] = (low[i] - xoffset[i]) / xscale[i];
@@ -1073,7 +1101,7 @@ static logical addConstraint(int n, real_t *restrict x, real_t *restrict p, int 
             //     }
             // }
             // else if (up[i] != HUGE_VAL) {
-            //     tol = DBL_EPSILON * 10.0 * (fabs(up[i]) + 1.0);
+            //     tol = EPSILON * 10.0 * (fabs(up[i]) + 1.0);
             //     if (up[i] - (x[i] * xscale[i] + xoffset[i]) <= tol) {
             //         pivot[i] = 1;
             //         x[i] = (up[i] - xoffset[i]) / xscale[i];
@@ -1350,7 +1378,7 @@ static real_t initialStep(real_t fnew, real_t fmin, real_t gtp,
 
     d = fabs(fnew - fmin);
     alpha = 1.0;
-    if (d * 2.0 <= -(gtp) && d >= DBL_EPSILON) {
+    if (d * 2.0 <= -(gtp) && d >= EPSILON) {
         alpha = d * -2.0 / gtp;
     }
     if (alpha >= smax) {
@@ -1690,17 +1718,17 @@ static ls_rc linearSearch(int n, tnc_function * function, void *state,
     xnorm = dnrm21(n, temp);
 
     /* Compute the absolute and relative tolerances for the linear search */
-    rteps = sqrt(DBL_EPSILON);
-    pe = dnrm21(n, p) + DBL_EPSILON;
+    rteps = sqrt(EPSILON);
+    pe = dnrm21(n, p) + EPSILON;
     reltol = rteps * (xnorm + 1.0) / pe;
-    abstol = -DBL_EPSILON * (1.0 + fabs(*f)) / (gu - DBL_EPSILON);
+    abstol = -EPSILON * (1.0 + fabs(*f)) / (gu - EPSILON);
 
     /* Compute the smallest allowable spacing between points in the linear
        search */
-    tnytol = DBL_EPSILON * (xnorm + 1.0) / pe;
+    tnytol = EPSILON * (xnorm + 1.0) / pe;
 
-    rtsmll = DBL_EPSILON;
-    big = 1.0 / (DBL_EPSILON * DBL_EPSILON);
+    rtsmll = EPSILON;
+    big = 1.0 / (EPSILON * EPSILON);
     itcnt = 0;
 
     /* Set the estimated relative precision in f(x). */
@@ -2156,6 +2184,9 @@ static void dcopy1(int n, const real_t dx[], real_t dy[])
 /* Negate */
 static void dneg1(int n, real_t v[])
 {
+    #ifndef _MSC_VER
+    #pragma omp simd
+    #endif
     for (int i = 0; i < n; i++) {
         v[i] = -v[i];
     }
