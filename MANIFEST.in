@@ -11,6 +11,7 @@ global-exclude *.jpg
 global-exclude *.pdf
 global-exclude *.R
 global-exclude *.Rd
+global-exclude *.md
 include pyproject.toml
 exclude poismf/*.c
 exclude poismf/*.cpp
@@ -20,6 +21,7 @@ exclude DESCRIPTION
 exclude NAMESPACE
 exclude .gitignore
 exclude .gitattributes
+exclude .Rbuildignore
 exclude docs/*
 prune docs/*
 prune R/*
