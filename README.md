@@ -30,11 +30,10 @@ Compared to other models, and depending on the optimization method used, this mo
 ```
 pip install poismf
 ```
-or
+or if that fails:
 ```
-pip install git+https://www.github.com/david-cortes/poismf.git
+pip install --no-use-pep517 poismf
 ```
-(might **not** work on Windows depending on specific configurations)
 
 Requires some BLAS library such as MKL (`pip install mkl-devel`) or OpenBLAS - will attempt to use the same as NumPy is using. Also requires a C compiler such as GCC or Visual Studio (in windows + conda, install Visual Studio Build Tools, and select package MSVC140 in the install options).
 
@@ -45,11 +44,6 @@ pip install isotree
 ```
 (Alternatively, can also pass argument enable-omp to the setup.py file: `python setup.py install enable-omp`)
 
-**Note2:** the setup script uses a PEP517 environment, which means it will create an isolated virtual environment, install its build dependencies there, compile, and then copy to the actual environment. This can causes issues - for example, if one has NumPy<1.20 and the build environment installs NumPy>=1.20, there will be a binary incompatibility which will make the package fail to import. To avoid PEP517, install with:
-```
-pip install --no-use-pep517 poismf
-```
-
 For any installation problems, please open an issue in GitHub providing information about your system (OS, BLAS, C compiler) and Python installation.
 
 * R
@@ -57,6 +51,8 @@ For any installation problems, please open an issue in GitHub providing informat
 ```r
 install.packages("poismf")
 ```
+
+It is recommended to use an optimized library for BLAS operations such as MKL or OpenBLAS - see [this post](https://github.com/david-cortes/R-openblas-in-windows) for instructions on getting OpenBLAS in R for Windows. Alternatively, Microsoft's MRAN distribution comes MKL preinstalled.
 
 # Getting started
 

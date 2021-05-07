@@ -10,8 +10,8 @@ poisson.llk(model, X_test, full_llk = FALSE, include_missing = FALSE)
 \item{model}{A Poisson factorization model object as returned by `poismf`.}
 
 \item{X_test}{Input data on which to calculate log-likelihood, consisting of triplets.
-Can be passed as a `data.frame` or as a sparse COO matrix (see documentation of
-\link{poismf} for details on the accepted data types). If the `X` data passed to
+Can be passed as a `data.frame` or as a sparse COO/triplets matrix (class `Matrix::dgTMatrix` or
+`SparseM::matrix.coo`). If the `X` data passed to
 `poismf` was a `data.frame`, should pass a `data.frame` with entries corresponding
 to the same IDs, otherwise might pass either a `data.frame` with the row and column
 indices (starting at 1), or a sparse COO matrix.}

@@ -2,7 +2,7 @@
 #' @importFrom utils head
 #' @importFrom stats runif rpois
 #' @importFrom Matrix t
-#' @importClassesFrom Matrix dgCMatrix dgTMatrix dsparseVector
+#' @importClassesFrom Matrix dgCMatrix dgRMatrix dgTMatrix sparseVector dsparseVector TsparseMatrix RsparseMatrix CsparseMatrix
 #' @useDynLib poismf, .registration=TRUE
 
 #' @title Factorization of Sparse Counts Matrices through Poisson Likelihood
@@ -16,6 +16,20 @@
 #' Ideal for usage in recommender systems, in which the `X` matrix would consist of
 #' interactions (e.g. clicks, views, plays), with users representing the rows and items
 #' representing the columns.
+#' @details In order to speed up the optimization procedures, it's recommended to use
+#' an optimized library for BLAS operations such as MKL or OpenBLAs.
+#' See \href{https://github.com/david-cortes/R-openblas-in-windows}{this link}
+#' for instructions on getting OpenBLAS in R for Windows.
+#' 
+#' In order to obtain sparse latent factor matrices, you need to pass
+#' `method='tncg'` and a large `niter`, such as `niter=50` or `niter=100`.
+#' The L1 regularization approach is not recommended, even though it might
+#' also produce relatively sparse results with the other optimization methods.
+#' 
+#' When using proximal gradient method, this model is prone to numerical
+#' instability, and can turn out to spit all NaNs or zeros in the fitted
+#' parameters. The conjugate gradient and Newton-CG methods are not prone to
+#' such failed optimizations.
 #' @param X The counts matrix to factorize. Can be: \itemize{
 #' \item A `data.frame` with 3 columns, containing in this order:
 #' row index or user ID, column index or item ID, count value. The first two columns will
@@ -26,17 +40,17 @@
 #' (that is: `Matrix::dgTMatrix`) (recommended).
 #' Such a matrix can be created from row/column indices through
 #' function `Matrix::sparseMatrix` (with `repr="T"`).
-#' Will also accept them in CSC format (`Matrix::dgCMatrix`), but will be converted
+#' Will also accept them in CSC and CSR formats (`Matrix::dgCMatrix` and
+#' `Matrix::dgRMatrix`), but will be converted
 #' along the way (so it will be slightly slower).
-#' \item A sparse matrix in COO format from the `SparseM` package. Such a matrix
-#' can be created from row/column indices through
-#' `new("matrix.coo", ra=values, ja=col_ix, ia=row_ix, dim=as.integer(c(m,n)))`.
+#' \item A sparse matrix in COO format from the `SparseM` package.
 #' Will also accept them in CSR and CSC format, but will be converted along the way
 #' (so it will be slightly slower).
 #' \item A full matrix (of class `base::matrix`) - this is not recommended though.
 #' }
-#' Passing sparse matrices is faster as it will not need to re-enumerate the rows and columns,
-#' Full matrices will be converted to sparse.
+#' 
+#' Passing sparse matrices is faster as it will not need to re-enumerate the rows and columns.
+#' Dense (regular) matrices will be converted to sparse.
 #' @param k Number of latent factors to use (dimensionality of the low-rank factorization).
 #' If `k` is small (e.g. `k=5`), it's recommended to use `method='pg'`.
 #' For large values, (e.g. `k=100`), it's recommended to use `method='tncg'`.
@@ -115,15 +129,6 @@
 #' raise an interrupt exception without producing a fitted model object
 #' (when passing `FALSE`).
 #' @param nthreads Number of parallel threads to use.
-#' @details In order to obtain sparse latent factor matrices, you need to pass
-#' `method='tncg'` and a large `niter`, such as `niter=50` or `niter=100`.
-#' The L1 regularization approach is not recommended, even though it might
-#' also produce relatively sparse results with the other optimization methods.
-#' 
-#' When using proximal gradient method, this model is prone to numerical
-#' instability, and can turn out to spit all NaNs or zeros in the fitted
-#' parameters. The conjugate gradient and Newton-CG methods are not prone to
-#' such failed optimizations.
 #' @references \itemize{
 #' \item Cortes, David.
 #' "Fast Non-Bayesian Poisson Factorization for Implicit-Feedback Recommendations."
@@ -136,10 +141,10 @@
 #' Mathematical Sciences Dept. Tech. Rep. 307, The Johns Hopkins University. 1984.
 #' }
 #' @return An object of class `poismf` with the following fields of interest:
-#' @field A The user/document/row-factor matrix (as a vector in row-major order,
-#' has to be reshaped to (k, nrows) and then transposed to obtain an R matrix).
-#' @field B The item/word/column-factor matrix (as a vector in row-major order,
-#' has to be reshaped to (k, ncols) and then transposed to obtain an R matrix).
+#' @field A The user/document/row-factor matrix (will be transposed due to R's
+#' column-major storage of matrices).
+#' @field B The item/word/column-factor matrix(will be transposed due to R's
+#' column-major storage of matrices).
 #' @field levels_A A vector indicating which user/row ID corresponds to each row
 #' position in the `A` matrix. This will only be generated when passing `X` as a
 #' `data.frame`, otherwise will not remap them.
@@ -258,9 +263,17 @@ poismf <- function(X, k = 50, method = "tncg",
     handle_interrupt <- as.logical(handle_interrupt)
     
     is_df <- FALSE
+
+    if (inherits(X, "matrix.coo")) {
+        X <- as(X, "TsparseMatrix")
+    } else if (inherits(X, "matrix.csr")) {
+        X <- as(X, "RsparseMatrix")
+    } else if (inherits(X, "matrix.csc")) {
+        X <- as(X, "CsparseMatrix")
+    }
     
     ### Convert X to CSR and CSC
-    if ("data.frame" %in% class(X)) {
+    if (is.data.frame(X)) {
         is_df    <- TRUE
         X[[1]]   <- factor(X[[1]])
         X[[2]]   <- factor(X[[2]])
@@ -277,74 +290,28 @@ poismf <- function(X, k = 50, method = "tncg",
         if (any(ix_row < 1) | any(ix_col < 1)) {
             stop("First two columns of 'X' must be row/column indices starting at 1.")
         }
-        ## Note: package 'Matrix' has only COO and CSC matrices; 'SparseM' has COO, CSR, CSC.
-        ## SparseM will put the index under 'ja' and index pointer under 'ia', for both CSR and CSC.
-        ## In order to create CSR matrices from 'Matrix', it makes CSC versions of their transpose.
-        ## Also: 'Matrix' is zero-based, whereas 'SparseM' is one-based, except
-        ## for vectors in 'Matrix' which are one-based; but when creating a CSC matrix, it will
-        ## require the indices to be one-based and the indices pointers to be zero-based.
-        ## Update: Matrix also has CSR
-        Xcsr <- Matrix::sparseMatrix(i = ix_col, j = ix_row, x = xflat, repr = "C")
+        Xcsr <- Matrix::sparseMatrix(i = ix_row, j = ix_col, x = xflat, repr = "R")
         Xcsc <- Matrix::sparseMatrix(i = ix_row, j = ix_col, x = xflat, repr = "C")
-    } else if ("matrix" %in% class(X)) {
-        Xcsr <- as(t(X), "dgCMatrix")
-        Xcsc <- as(  X,  "dgCMatrix")
-    } else if ("dgTMatrix" %in% class(X)) {
-        Xcsr <- as(Matrix::t(X), "dgCMatrix")
-        Xcsc <- as(X, "dgCMatrix")
-    } else if ("dgCMatrix" %in% class(X)) {
-        ### TODO: here need to change to accommodate MatrixExtra
-        Xcsr <- Matrix::t(X)
+    } else if (is.matrix(X)) {
+        Xcsr <- as(X, "RsparseMatrix")
+        Xcsc <- as(X, "CsparseMatrix")
+    } else if (inherits(X, "dgTMatrix")) {
+        Xcsr <- as(X, "RsparseMatrix")
+        Xcsc <- as(X, "CsparseMatrix")
+    } else if (inherits(X, "dgCMatrix")) {
+        Xcsr <- as(X, "RsparseMatrix")
         Xcsc <- X
-    } else if ("matrix.coo" %in% class(X)) {
-        ### TODO: 'Matrix' now has functions to convert from SparseM, should use those instead
-        if (requireNamespace("SparseM", quietly = TRUE)) {
-            Xcsr <- SparseM::as.matrix.csr(X)
-            Xcsc <- SparseM::as.matrix.csc(X)
-        } else {
-            Xcsr <- Matrix::sparseMatrix(i=X@ja, j=X@ia, x=X@ra,
-                                         repr="C", dims=rev(X@dimension))
-            Xcsc <- Matrix::sparseMatrix(i=X@ia, j=X@ja, x=X@ra,
-                                         repr="C", dims=X@dimension)
-        }
-    } else if ("matrix.csr" %in% class(X)) {
+    } else if (inherits(X, "dgRMatrix")) {
         Xcsr <- X
-        if (requireNamespace("SparseM", quietly = TRUE)) {
-            Xcsc <- SparseM::t(X)
-            class(Xcsc) <- "matrix.csc"
-            Xcsc@dimension <- rev(Xcsc@dimension)
-        } else {
-            Xcoo <- Matrix::sparseMatrix(i=X@ja, p=X@ia-1L, x=X@ra,
-                                         repr="T", dims=rev(X@dimension))
-            Xcsr <- as(Xcoo, "dgCMatrix")
-            Xcsc <- as(Matrix::t(Xcoo), "dgCMatrix")
-        }
-    } else if ("matrix.csc" %in% class(X)) {
-        Xcsc <- X
-        if (requireNamespace("SparseM", quietly = TRUE)) {
-            Xcsr <- SparseM::t(X)
-            class(Xcsr) <- "matrix.csr"
-            Xcsr@dimension <- rev(Xcsr@dimension)
-        } else {
-            Xcoo <- Matrix::sparseMatrix(i=X@ja, p=X@ia-1L, x=X@ra,
-                                         repr="T", dims=X@dimension)
-            Xcsr <- as(Matrix::t(Xcoo), "dgCMatrix")
-            Xcsc <- as(Xcoo, "dgCMatrix")
-        }
+        Xcsc <- as(X, "CsparseMatrix")
     } else {
         stop("'X' must be a 'data.frame' with 3 columns, or a matrix (either full or sparse triplets).")
     }
     
     ### Get dimensions
-    if ("matrix.csr" %in% class(Xcsr)) {
-        nnz  <- length(Xcsr@ra)
-        dimA <- NROW(Xcsr)
-        dimB <- NCOL(Xcsr)
-    } else {
-        nnz  <- length(Xcsr@x)
-        dimA <- NCOL(Xcsr)
-        dimB <- NROW(Xcsr)
-    }
+    nnz  <- length(Xcsr@x)
+    dimA <- nrow(Xcsr)
+    dimB <- ncol(Xcsr)
     if (nnz < 1) { stop("Input does not contain non-zero values.") }
     
     ### Check for integer overflow
@@ -375,30 +342,21 @@ poismf <- function(X, k = 50, method = "tncg",
             stop("Memory error.")
         }
     }
+    A <- matrix(A, nrow=k)
+    B <- matrix(B, nrow=k)
     
     ### Run optimizer
-    if ("matrix.csr" %in% class(Xcsr)) { ## 'SparseM'
-        .Call("wrapper_run_poismf",
-              Xcsr@ra, Xcsr@ja - 1L, Xcsr@ia - 1L,
-              Xcsc@ra, Xcsc@ja - 1L, Xcsc@ia - 1L,
-              A, B, dimA, dimB, k,
-              method_code, limit_step, l2_reg, l1_reg,
-              weight_mult, initial_step,
-              niter, maxupd, early_stop, reuse_prev,
-              handle_interrupt, nthreads)
-    } else { ## 'Matrix'
-        .Call("wrapper_run_poismf",
-              Xcsr@x, Xcsr@i, Xcsr@p,
-              Xcsc@x, Xcsc@i, Xcsc@p,
-              A, B, dimA, dimB, k,
-              method_code, limit_step, l2_reg, l1_reg,
-              weight_mult, initial_step,
-              niter, maxupd, early_stop, reuse_prev,
-              handle_interrupt, nthreads)
-    }
+    .Call("wrapper_run_poismf",
+          Xcsr@x, Xcsr@j, Xcsr@p,
+          Xcsc@x, Xcsc@i, Xcsc@p,
+          A, B, dimA, dimB, k,
+          method_code, limit_step, l2_reg, l1_reg,
+          weight_mult, initial_step,
+          niter, maxupd, early_stop, reuse_prev,
+          handle_interrupt, nthreads)
     
     ### Return all info
-    Bsum <- rowSums(matrix(B, nrow = k, ncol = dimB)) + l1_reg
+    Bsum  <- rowSums(matrix(B, nrow = k, ncol = dimB)) + l1_reg
     Amean <- rowMeans(matrix(A, nrow = k, ncol = dimA))
     
     out <- list(
@@ -448,8 +406,7 @@ poismf <- function(X, k = 50, method = "tncg",
 #' \bold{Will be modified in-place}.
 #' @param B Initial values for the item-factor matrix of dimensions [dimB, k]. See
 #' documentation about `A` for more details.
-#' @param Xcsr The \bold{transpose} of the `X` matrix in CSC format (so that its structure
-#' would match a CSR matrix). Should be an object of class `Matrix::dgCMatrix`.
+#' @param Xcsr The `X` matrix in CSR format. Should be an object of class `Matrix::dgRMatrix`.
 #' @param Xcsc The `X` matrix in CSC format. Should be an object of class `Matrix::dgCMatrix`.
 #' @param k The number of latent factors. \bold{Must match with the dimension of `A` and `B`}.
 #' @param ... Other hyperparameters that can be passed to `poismf`. See the documentation
@@ -473,8 +430,8 @@ poismf <- function(X, k = 50, method = "tncg",
 #' 
 #' ### convert to required format
 #' Xcsr <- Matrix::sparseMatrix(
-#'             i=X$col_ix, j=X$row_ix, x=X$count,
-#'             repr="C"
+#'             i=X$row_ix, j=X$col_ix, x=X$count,
+#'             repr="R"
 #' )
 #' Xcsc <- Matrix::sparseMatrix(
 #'             i=X$row_ix, j=X$col_ix, x=X$count,
@@ -519,7 +476,7 @@ poismf__unsafe <- function(A, B, Xcsr, Xcsc, k, method="tncg",
                           "pg"   = 3L)
     method_code <- as.integer(method_code)
     .Call("wrapper_run_poismf",
-          Xcsr@x, Xcsr@i, Xcsr@p,
+          Xcsr@x, Xcsr@j, Xcsr@p,
           Xcsc@x, Xcsc@i, Xcsc@p,
           A, B, dimA, dimB, k,
           method_code, limit_step, l2_reg, l1_reg,
@@ -600,11 +557,16 @@ factors.single <- function(model, X, l2_reg = model$l2_reg, l1_reg = model$l1_re
     l2_reg <- as.numeric(l2_reg)
     weight_mult <- as.numeric(weight_mult)
 
-    if ("data.frame" %in% class(X)) {
+    if (inherits(X, "sparseMatrix") && nrow(X) == 1L)
+        X <- as(X, "sparseVector")
+
+    if (is.data.frame(X)) {
         xval <- as.numeric(X[[2]])
         xind <- process.items.vec(model, X[[1]], "First column of 'X'")
-    } else if ("dsparseVector" %in% class(X)) {
-        xval <- as.numeric(X@x)
+    } else if (inherits(X, "sparseVector")) {
+        if (!inherits(X, "dsparseVector"))
+            X <- as(X, "dsparseVector")
+        xval <- X@x
         xind <- process.items.vec(model, X@i, "Column indices of 'X'")
     } else {
         stop("'X' must be a data.frame or Matrix::dsparseVector.")
@@ -674,73 +636,37 @@ factors.single <- function(model, X, l2_reg = model$l2_reg, l1_reg = model$l1_re
 #' @seealso \link{factors.single} \link{topN.new}
 #' @export
 factors <- function(model, X, add_names=TRUE) {
-    if ( ("levels_A" %in% class(model)) & !("data.frame" %in% class(X)) ) {
+    if ( ("levels_A" %in% names(model)) & !is.data.frame(X) ) {
         stop("Must pass 'X' as data.frame if model was fit to X as data.frame.")
     }
-    if ("data.frame" %in% class(X)) {
+    if (is.data.frame(X)) {
+
         fact <- factor(X[[1]])
         levs <- levels(fact)
         ixA  <- as.integer(fact)
         ixB  <- process.items.vec(model, X[[2]], "Second column of 'X_test'")
         Xval <- as.numeric(X[[3]])
-        Xcsr <- Matrix::sparseMatrix(i=ixB+1L, j=ixA, x=Xval, repr="C")
-        dimA <- ncol(Xcsr)
+        Xcsr <- Matrix::sparseMatrix(i=ixA, j=ixB+1L, x=Xval, repr="R")
+
     } else {
+
         levs <- NULL
         if (is.null(dim(X))) {
             stop("Invalid 'X'.")
         }
         if (ncol(X) != model$dimB)
             stop("'X' should contain the same columns as passed to 'poismf'.")
+
+        if (!inherits(X, "dgRMatrix"))
+            X <- as(X, "RsparseMatrix")
+        if (!inherits(X, "dgRMatrix"))
+            stop("Could not convert 'X' to CSR matrix. Try passing a 'dgRMatrix' object.")
         
-        if ("matrix" %in% class(X)) {
-            Xcsr <- as(X, "dgRMatrix")
-        } else if ("dgRMatrix" %in% class(X)) {
-            Xcsr <- X
-        } else if ("dgTMatrix" %in% class(X)) {
-            Xcsr <- as(Matrix::t(X), "dgCMatrix")
-        } else if("dgCMatrix" %in% class(X)) {
-            Xcsr <- Matrix::t(X)
-        } else if (NROW(intersect(c("matrix.coo", "matrix.csc"), class(X)))) {
-            if (requireNamespace("SparseM", quietly = TRUE)) {
-                Xcsr <- SparseM::as.matrix.csr(X)
-            } else {
-                if ("matrix.coo" %in% class(X)) {
-                    Xcsr <- Matrix::sparseMatrix(i=X@ja, j=X@ia, x=X@ra,
-                                                 repr="C", dims=rev(X@dimension))
-                } else {
-                    Xcsr <- Matrix::t(Matrix::sparseMatrix(i=X@ja, p=X@ia-1L, x=X@ra,
-                                                           repr="C", dims=X@dimension))
-                }
-            }
-        } else if ("matrix.csr" %in% class(X)) {
-            Xcsr <- X
-        } else {
-            stop("'X' must be a 'data.frame' with 3 columns, or a matrix (either full, or sparse triplets or CSR).")
-        }
-        
-        if (any(class(Xcsr) %in% c("dgRMatrix", "matrix.csr"))) {
-            dimA <- nrow(Xcsr)
-        } else {
-            dimA <- ncol(Xcsr)
-        }
-        
+        Xcsr <- X
+
     }
     
-    if ("matrix.csr" %in% class(Xcsr)) {
-        Xr_indptr  <- Xcsr@ia - 1L
-        Xr_indices <- Xcsr@ja - 1L
-        Xr_values  <- Xcsr@ra
-    } else if ("dgRMatrix" %in% class(Xcsr)) {
-        Xr_indptr  <- Xcsr@p
-        Xr_indices <- Xcsr@j
-        Xr_values  <- Xcsr@x
-    } else {
-        Xr_indptr  <- Xcsr@p
-        Xr_indices <- Xcsr@i
-        Xr_values  <- Xcsr@x
-    }
-    
+    dimA <- nrow(Xcsr)
     method_code <- switch(model$method,
                           "tncg" = 1,
                           "cg"   = 2,
@@ -750,7 +676,7 @@ factors <- function(model, X, add_names=TRUE) {
     Anew <- .Call("wrapper_predict_factors_multiple",
                   as.integer(dimA), model$k,
                   model$B, model$Bsum, model$Amean,
-                  Xr_indptr, Xr_indices, Xr_values,
+                  Xcsr@p, Xcsr@j, Xcsr@x,
                   model$l2_reg, model$weight_mult,
                   model$initial_step, model$niter, model$maxupd,
                   method_code, model$limit_step,
@@ -798,7 +724,7 @@ factors <- function(model, X, add_names=TRUE) {
 #' predictions  for the requested row/column combinations.
 #' \item If `b` was not passed, will return a sparse matrix with the same entries
 #' and shape as `a`, but with the values being the predictions from the model for
-#' the non-missing entries.
+#' the non-missing entries. In such case, the output will be of class `Matrix::dgTMatrix`.
 #' }
 #' @seealso \link{poismf} \link{topN} \link{factors}
 #' @export
@@ -806,83 +732,42 @@ predict.poismf <- function(object, a, b = NULL, ...) {
     if (is.null(a)) stop("Must pass 'a'.")
     
     if (is.null(b)) {
+
         if ("levels_A" %in% names(object)) {
             stop("Must pass 'b' when fitting the model was fit to a data.frame.")
         }
         
         outp_matrix <- TRUE
-        return_csc  <- FALSE
-        return_csr  <- FALSE
-        if ("data.frame" %in% class(a)) {
+        if (is.data.frame(a)) {
             stop("Cannot pass a data.frame as 'a'.")
         }
-        if ("matrix" %in% class(a)) {
+
+        if (!inherits(a, "TsparseMatrix"))
+            a <- as(a, "TsparseMatrix")
+        if (!inherits(a, "dgTMatrix"))
             a <- as(a, "dgTMatrix")
-        } else if ("dgCMatrix" %in% class(a)) {
-            return_csc <- TRUE
-            a <- as(a, "dgTMatrix")
-        } else if (NROW(intersect(c("matrix.csr", "matrix.csc"), class(a)))) {
-            if (requireNamespace("SparseM", quietly = TRUE)) {
-                a <- SparseM::as.matrix.coo(a)
-            } else {
-                if ("matrix.csr" %in% class(a)) {
-                    return_csr <- TRUE
-                    a <- Matrix::t(Matrix::sparseMatrix(i=a@ja, p=a@ia-1L, x=a@ra,
-                                                        repr="T", dims=rev(a@dimension)))
-                } else {
-                    return_csc <- TRUE
-                    a <- Matrix::sparseMatrix(i=a@ja, p=a@ia-1L, x=a@ra,
-                                              repr="T", dims=a@dimension)
-                }
-            }
-        }
-        
-        if ("dgTMatrix" %in% class(a)) {
-            ixA <- process.users.vec(object, a@i + 1L)
-            ixB <- process.items.vec(object, a@j + 1L)
-            mat_dims <- a@Dim
-        } else if ("matrix.coo" %in% class(a)) {
-            ixA <- process.users.vec(object, a@ia)
-            ixB <- process.items.vec(object, a@ja)
-            mat_dims <- a@dimension
-        } else {
-            stop("If not passing 'b', 'a' must be a sparse matrix.")
-        }
+        ixA <- process.users.vec(object, a@i + 1L)
+        ixB <- process.items.vec(object, a@j + 1L)
+        mat_dims <- a@Dim
+
     } else {
+
         outp_matrix <- FALSE
         ixA <- process.users.vec(object, a, "'a'")
         ixB <- process.items.vec(object, b, "'b'")
         if (length(ixA) != length(ixB)) {
             stop("'a' and 'b' must have the same number of entries.")
         }
+
     }
     
     pred <- .Call("wrapper_predict_multiple",
                   object$A, object$B, object$k,
                   ixA, ixB, object$nthreads)
+    
     if (outp_matrix) {
-        if (NROW(intersect(c("matrix", "dgTMatrix", "dgCMatrix"), class(a)))) {
-            if (return_csc)
-                repr <- "C"
-            else
-                repr <- "T"
-            return(Matrix::sparseMatrix(i=ixA+1L, j=ixB+1L, x=pred,
-                                        dims=mat_dims, repr=repr))
-        } else {
-            if (requireNamespace("SparseM", quietly = TRUE)) {
-                out <- new("matrix.coo", ra=pred, ja=ixB+1L, ia=ixA+1L, dim=mat_dims)
-                if (return_csr) {
-                    return(SparseM::as.matrix.csr(out))
-                } else if (return_csc) {
-                    return(SparseM::as.matrix.csc(out))
-                } else {
-                    return(out)
-                }
-            } else {
-                return(Matrix::sparseMatrix(i=ixA+1L, j=ixB+1L, x=pred,
-                                            dims=mat_dims, repr="T"))
-            }
-        }
+        a@x <- pred
+        return(a)
     } else {
         return(pred)
     }
@@ -1048,31 +933,6 @@ topN.new <- function(model, X, n = 10, include = NULL, exclude = NULL, output_sc
     return(topN_internal(model, a_vec, n, include, exclude, output_score))
 }
 
-#' @title Predict whole input matrix
-#' @description Outputs the predictions for the whole input matrix to which the model was fit.
-#' Note that this will be a dense matrix, and in typical recommender systems scenarios will
-#' likely not fit in memory.
-#' @param model A Poisson factorization model as output by function `poismf`.
-#' @return A matrix [dimA x dimB] with the full predictions for all rows and columns.
-#' If the `X` data passed to `poismf` was a `data.frame`, the resulting output will have
-#' row and column names added to it. Be aware that, if `X` was a `data.frame` with integers
-#' as IDs, selecting columns or rows of the named matrix will output ordinal positions
-#' - e.g. `out[2,]` (second row) vs. `out["2",]` (row for ID=2 in `X`).
-#' The mappings, if produced, can be obtained through function \link{get.model.mappings}.
-#' @export
-get.all.predictions <- function(model) {
-    A <- t(matrix(model$A, nrow = model$k))
-    B <-   matrix(model$B, nrow = model$k)
-    
-    out <- A %*% B
-    if ("levels_A" %in% names(model))
-        row.names(out) <- model$levels_A
-    if ("levels_B" %in% names(model))
-        colnames(out)  <- model$levels_B
-    
-    return(out)
-}
-
 #' @title Get information about poismf object
 #' @description Print basic properties of a "poismf" object.
 #' @param x An object of class "poismf" as returned by function "poismf".
@@ -1130,8 +990,8 @@ summary.poismf <- function(object, ...) {
 #' @seealso \link{get.model.mappings}
 #' @export
 get.factor.matrices <- function(model, add_names=TRUE) {
-    A <- t(matrix(model$A, nrow = model$k))
-    B <- t(matrix(model$B, nrow = model$k))
+    A <- t(model$A)
+    B <- t(model$B)
     if (add_names & ("levels_A" %in% names(model))) {
         row.names(A) <- model$levels_A
         row.names(B) <- model$levels_B
@@ -1182,8 +1042,8 @@ get.model.mappings <-  function(model) {
 #' @details If using more than 1 thread, the results might vary slightly between runs.
 #' @param model A Poisson factorization model object as returned by `poismf`.
 #' @param X_test Input data on which to calculate log-likelihood, consisting of triplets.
-#' Can be passed as a `data.frame` or as a sparse COO matrix (see documentation of
-#' \link{poismf} for details on the accepted data types). If the `X` data passed to
+#' Can be passed as a `data.frame` or as a sparse COO/triplets matrix (class `Matrix::dgTMatrix` or
+#' `SparseM::matrix.coo`). If the `X` data passed to
 #' `poismf` was a `data.frame`, should pass a `data.frame` with entries corresponding
 #' to the same IDs, otherwise might pass either a `data.frame` with the row and column
 #' indices (starting at 1), or a sparse COO matrix.
@@ -1206,11 +1066,15 @@ poisson.llk <- function(model, X_test, full_llk = FALSE, include_missing = FALSE
     if ( ("levels_A" %in% class(model)) & !("data.frame" %in% class(X_test)) ) {
         stop("Must pass 'X_test' as data.frame if model was fit to X as data.frame.")
     }
+
     if ("data.frame" %in% class(X_test)) {
+
         ixA  <- process.users.vec(model, X_test[[1]], "First column of 'X_test'")
         ixB  <- process.items.vec(model, X_test[[2]], "Second column of 'X_test'")
         Xval <- as.numeric(X_test[[3]])
+
     } else {
+
         dimA <- nrow(X_test)
         dimB <- ncol(X_test)
         if (is.null(dimA) | is.null(dimB)) {
@@ -1218,40 +1082,15 @@ poisson.llk <- function(model, X_test, full_llk = FALSE, include_missing = FALSE
         }
         if (dimA > model$dimA) stop("'X_test' cannot contain new rows.")
         if (dimB > model$dimB) stop("'X_test' cannot contain new columns.")
-        
-        if ("matrix" %in% class(X_test)) {
+
+        if (!inherits(X_test, "TsparseMatrix"))
+            X_test <- as(X_test, "TsparseMatrix")
+        if (!inherits(X_test, "dsparseMatrix"))
             X_test <- as(X_test, "dgTMatrix")
-        }
         
-        if ("dgCMatrix" %in% class(X_test)) {
-            X_test <- as(X_test, "dgTMatrix")
-        } else if ("matrix.csr" %in% class(X_test)) {
-            if (requireNamespace("SparseM", quietly = TRUE)) {
-                X_test <- SparseM::as.matrix.coo(X_test)
-            } else {
-                X_test <- Matrix::sparseMatrix(j=X_test@ja, p=X_test@ia-1L, x=X_test@ra,
-                                               repr="T")
-            }
-        } else if ("matrix.csc" %in% class(X_test)) {
-            if (requireNamespace("SparseM", quietly = TRUE)) {
-                X_test <- SparseM::as.matrix.coo(X_test)
-            } else {
-                X_test <- Matrix::sparseMatrix(i=X_test@ja, p=X_test@ia-1L, x=X_test@ra,
-                                               repr="T")
-            }
-        }
-        
-        if("dgTMatrix" %in% class(X_test)) {
-            ixA  <- X_test@i
-            ixB  <- X_test@j
-            Xval <- X_test@x
-        } else if ("matrix.coo" %in% class(X_test)) {
-            ixA  <- X_test@ia - 1L
-            ixB  <- X_test@ja - 1L
-            Xval <- X_test@ra
-        } else {
-            stop("'X' must be a 'data.frame' with 3 columns, or a matrix (either full or sparse triplets).")
-        }
+        ixA  <- X_test@i
+        ixB  <- X_test@j
+        Xval <- X_test@x
         
     }
     

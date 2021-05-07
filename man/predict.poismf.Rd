@@ -40,7 +40,7 @@ pass `b`.}
 predictions  for the requested row/column combinations.
 \item If `b` was not passed, will return a sparse matrix with the same entries
 and shape as `a`, but with the values being the predictions from the model for
-the non-missing entries.
+the non-missing entries. In such case, the output will be of class `Matrix::dgTMatrix`.
 }
 }
 \description{

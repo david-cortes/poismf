@@ -34,17 +34,17 @@ as a sparse COO matrix instead.
 (that is: `Matrix::dgTMatrix`) (recommended).
 Such a matrix can be created from row/column indices through
 function `Matrix::sparseMatrix` (with `repr="T"`).
-Will also accept them in CSC format (`Matrix::dgCMatrix`), but will be converted
+Will also accept them in CSC and CSR formats (`Matrix::dgCMatrix` and
+`Matrix::dgRMatrix`), but will be converted
 along the way (so it will be slightly slower).
-\item A sparse matrix in COO format from the `SparseM` package. Such a matrix
-can be created from row/column indices through
-`new("matrix.coo", ra=values, ja=col_ix, ia=row_ix, dim=as.integer(c(m,n)))`.
+\item A sparse matrix in COO format from the `SparseM` package.
 Will also accept them in CSR and CSC format, but will be converted along the way
 (so it will be slightly slower).
 \item A full matrix (of class `base::matrix`) - this is not recommended though.
 }
-Passing sparse matrices is faster as it will not need to re-enumerate the rows and columns,
-Full matrices will be converted to sparse.}
+
+Passing sparse matrices is faster as it will not need to re-enumerate the rows and columns.
+Dense (regular) matrices will be converted to sparse.}
 
 \item{k}{Number of latent factors to use (dimensionality of the low-rank factorization).
 If `k` is small (e.g. `k=5`), it's recommended to use `method='pg'`.
@@ -155,6 +155,11 @@ interactions (e.g. clicks, views, plays), with users representing the rows and i
 representing the columns.
 }
 \details{
+In order to speed up the optimization procedures, it's recommended to use
+an optimized library for BLAS operations such as MKL or OpenBLAs.
+See \href{https://github.com/david-cortes/R-openblas-in-windows}{this link}
+for instructions on getting OpenBLAS in R for Windows.
+
 In order to obtain sparse latent factor matrices, you need to pass
 `method='tncg'` and a large `niter`, such as `niter=50` or `niter=100`.
 The L1 regularization approach is not recommended, even though it might
@@ -168,11 +173,11 @@ such failed optimizations.
 \section{Fields}{
 
 \describe{
-\item{\code{A}}{The user/document/row-factor matrix (as a vector in row-major order,
-has to be reshaped to (k, nrows) and then transposed to obtain an R matrix).}
+\item{\code{A}}{The user/document/row-factor matrix (will be transposed due to R's
+column-major storage of matrices).}
 
-\item{\code{B}}{The item/word/column-factor matrix (as a vector in row-major order,
-has to be reshaped to (k, ncols) and then transposed to obtain an R matrix).}
+\item{\code{B}}{The item/word/column-factor matrix(will be transposed due to R's
+column-major storage of matrices).}
 
 \item{\code{levels_A}}{A vector indicating which user/row ID corresponds to each row
 position in the `A` matrix. This will only be generated when passing `X` as a

@@ -17,8 +17,7 @@ hence the shape [k, dimA]. Recommended to initialize `~ Gamma(1,1)`.
 \item{B}{Initial values for the item-factor matrix of dimensions [dimB, k]. See
 documentation about `A` for more details.}
 
-\item{Xcsr}{The \bold{transpose} of the `X` matrix in CSC format (so that its structure
-would match a CSR matrix). Should be an object of class `Matrix::dgCMatrix`.}
+\item{Xcsr}{The `X` matrix in CSR format. Should be an object of class `Matrix::dgRMatrix`.}
 
 \item{Xcsc}{The `X` matrix in CSC format. Should be an object of class `Matrix::dgCMatrix`.}
 
@@ -58,8 +57,8 @@ X <- X[!duplicated(X[, c("row_ix", "col_ix")]), ]
 
 ### convert to required format
 Xcsr <- Matrix::sparseMatrix(
-            i=X$col_ix, j=X$row_ix, x=X$count,
-            repr="C"
+            i=X$row_ix, j=X$col_ix, x=X$count,
+            repr="R"
 )
 Xcsc <- Matrix::sparseMatrix(
             i=X$row_ix, j=X$col_ix, x=X$count,
