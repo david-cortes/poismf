@@ -8,13 +8,13 @@ except:
 import numpy
 from sys import platform
 import os
-from findblas.distutils import build_ext_with_blas
+from Cython.Distutils import build_ext
 from sys import platform
 import sys, os
 
 
 ## https://stackoverflow.com/questions/724664/python-distutils-how-to-get-a-compiler-that-is-going-to-be-used
-class build_ext_subclass( build_ext_with_blas ):
+class build_ext_subclass( build_ext ):
     def build_extensions(self):
         compiler = self.compiler.compiler_type
         if compiler == 'msvc': # visual studio is 'special'
@@ -37,7 +37,7 @@ class build_ext_subclass( build_ext_with_blas ):
                 e.extra_compile_args = [arg for arg in e.extra_compile_args if arg != '-fopenmp']
                 e.extra_link_args    = [arg for arg in e.extra_link_args    if arg != '-fopenmp']
 
-        build_ext_with_blas.build_extensions(self)
+        build_ext.build_extensions(self)
 
 use_omp = (("enable-omp" in sys.argv)
            or ("-enable-omp" in sys.argv)
@@ -62,8 +62,8 @@ if not from_rtd:
         author = 'David Cortes',
         author_email = 'david.cortes.rivera@gmail.com',
         url = 'https://github.com/david-cortes/poismf',
-        version = '0.3.0-1',
-        install_requires = ['numpy', 'pandas>=0.24', 'cython', 'findblas'],
+        version = '0.3.0-2',
+        install_requires = ['numpy', 'pandas>=0.24', 'cython', 'scipy'],
         description = 'Fast and memory-efficient Poisson factorization for sparse count matrices',
         cmdclass = {'build_ext': build_ext_subclass},
         ext_modules = [
@@ -97,7 +97,7 @@ else:
         author = 'David Cortes',
         author_email = 'david.cortes.rivera@gmail.com',
         url = 'https://github.com/david-cortes/poismf',
-        version = '0.3.0-1',
-        install_requires = ['numpy', 'pandas>=0.24', 'cython'],
+        version = '0.3.0-2',
+        install_requires = ['numpy', 'scipy', 'pandas>=0.24', 'cython'],
         description = 'Fast and memory-efficient Poisson factorization for sparse count matrices',
     )

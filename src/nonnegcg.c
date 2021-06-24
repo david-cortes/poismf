@@ -288,6 +288,10 @@ int minimize_nonneg_cg(real_t *restrict x, int n, real_t *fun_val,
         }
 
         /* perform line search */
+        /* TODO: here don't need to recompute the whole function,
+           only need to keep the current predictions (pt1=B*a_vec) and the predictions
+           for the new search direction (pt2=B*alpha*grad), then the loss can be
+           evaluated faster by summing the two. */
         direction_norm_sq = cblas_tdot(n, direction_curr, 1, direction_curr, 1);
         curr_step = max_step;
         for (ls = 0; ls < max_ls; ls++)

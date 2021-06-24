@@ -130,22 +130,22 @@ typedef struct fdata {
 #include "tnc.h"
 
 /* BLAS functions */
-
-#ifdef _FOR_PYTHON
-    #include "findblas.h"  /* https://www.github.com/david-cortes/findblas */
-#else
-    #ifndef CBLAS_H
-    typedef enum CBLAS_ORDER     {CblasRowMajor=101, CblasColMajor=102} CBLAS_ORDER;
-    typedef enum CBLAS_TRANSPOSE {CblasNoTrans=111, CblasTrans=112, CblasConjTrans=113, CblasConjNoTrans=114} CBLAS_TRANSPOSE;
-    typedef enum CBLAS_UPLO      {CblasUpper=121, CblasLower=122} CBLAS_UPLO;
-    typedef CBLAS_ORDER CBLAS_LAYOUT;
-    real_t cblas_tdot(const int n, const real_t *x, const int incx, const real_t *y, const int incy);
-    void cblas_taxpy(const int n, const real_t alpha, const real_t *x, const int incx, real_t *y, const int incy);
-    void cblas_tscal(const int N, const real_t alpha, real_t *X, const int incX);
-    real_t cblas_tnrm2(const int n, const real_t *x, const int incx);
-    void cblas_tgemv(const CBLAS_ORDER order,  const CBLAS_TRANSPOSE TransA,  const int m, const int n,
-         const real_t alpha, const real_t  *a, const int lda,  const real_t  *x, const int incx,  const real_t beta,  real_t  *y, const int incy);
-    #endif
+#ifndef CBLAS_H
+typedef enum CBLAS_ORDER     {CblasRowMajor=101, CblasColMajor=102} CBLAS_ORDER;
+typedef enum CBLAS_TRANSPOSE {CblasNoTrans=111, CblasTrans=112, CblasConjTrans=113, CblasConjNoTrans=114} CBLAS_TRANSPOSE;
+typedef enum CBLAS_UPLO      {CblasUpper=121, CblasLower=122} CBLAS_UPLO;
+typedef CBLAS_ORDER CBLAS_LAYOUT;
+real_t cblas_tdot(const int n, const real_t *x, const int incx, const real_t *y, const int incy);
+void cblas_taxpy(const int n, const real_t alpha, const real_t *x, const int incx, real_t *y, const int incy);
+void cblas_tscal(const int N, const real_t alpha, real_t *X, const int incX);
+real_t cblas_tnrm2(const int n, const real_t *x, const int incx);
+#ifndef _FOR_PYTHON
+void cblas_tgemv(const CBLAS_ORDER order,  const CBLAS_TRANSPOSE TransA,  const int m, const int n,
+     const real_t alpha, const real_t  *a, const int lda,  const real_t  *x, const int incx,  const real_t beta,  real_t  *y, const int incy);
+#else /* <- Cython refuses to compile a cdef'd public type with enum arguments */
+void cblas_tgemv(const int order,  const int TransA,  const int m, const int n,
+     const real_t alpha, const real_t  *a, const int lda,  const real_t  *x, const int incx,  const real_t beta,  real_t  *y, const int incy);
+#endif
 #endif
 
 /* Visual Studio as of 2019 is stuck with OpenMP 2.0 (released 2002),

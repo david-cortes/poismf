@@ -290,3 +290,119 @@ def _call_topN(
             top_n, n, nthreads
         )
     return outp_ix, outp_score
+
+###################
+#### Cblas Wrappers
+#### Do not move to a new file as otherwise it doesn't compile,
+#### due to generating duplicated file names between headers and C files
+from scipy.linalg.cython_blas cimport ddot, daxpy, dscal, dnrm2, dgemv
+from scipy.linalg.cython_blas cimport sdot, saxpy, sscal, snrm2, sgemv
+
+ctypedef double (*ddot_)(const int*, const double*, const int*, const double*, const int*)
+ctypedef void (*daxpy_)(const int*, const double*, const double*, const int*, const double*, const int*)
+ctypedef void (*dscal_)(const int*, const double*, const double*, const int*)
+ctypedef double (*dnrm2_)(const int*, const double*, const int*)
+ctypedef void (*dgemv_)(const char*, const int*, const int*, const double*, const double*, const int*, const double*, const int*, const double*, const double*, const int*)
+
+ctypedef float (*sdot_)(const int*, const float*, const int*, const float*, const int*)
+ctypedef void (*saxpy_)(const int*, const float*, const float*, const int*, const float*, const int*)
+ctypedef void (*sscal_)(const int*, const float*, const float*, const int*)
+ctypedef float (*snrm2_)(const int*, const float*, const int*)
+ctypedef void (*sgemv_)(const char*, const int*, const int*, const float*, const float*, const int*, const float*, const int*, const float*, const float*, const int*)
+
+ctypedef enum CBLAS_ORDER:
+    CblasRowMajor = 101
+    CblasColMajor = 102
+
+ctypedef CBLAS_ORDER CBLAS_LAYOUT
+
+ctypedef enum CBLAS_TRANSPOSE:
+    CblasNoTrans=111
+    CblasTrans=112
+    CblasConjTrans=113
+    CblasConjNoTrans=114
+
+ctypedef enum CBLAS_UPLO:
+    CblasUpper=121
+    CblasLower=122
+
+ctypedef enum CBLAS_DIAG:
+    CblasNonUnit=131
+    CblasUnit=132
+
+ctypedef enum CBLAS_SIDE:
+    CblasLeft=141
+    CblasRight=142
+
+cdef public double cblas_ddot(const int n, const double *x, const int incx, const double *y, const int incy):
+    return (<ddot_>ddot)(&n, x, &incx, y, &incy)
+
+cdef public void cblas_daxpy(const int n, const double alpha, const double *x, const int incx, double *y, const int incy):
+    (<daxpy_>daxpy)(&n, &alpha, x, &incx, y, &incy)
+
+cdef public void cblas_dscal(const int N, const double alpha, double *X, const int incX):
+    (<dscal_>dscal)(&N, &alpha, X, &incX)
+
+cdef public double cblas_dnrm2(const int n, const double *x, const int incx):
+    return (<dnrm2_>dnrm2)(&n, x, &incx)
+
+### Note: Cython refuses to compile a public cdef'd function with enum arguments
+cdef public void cblas_dgemv(const int order,  const int TransA,  const int m, const int n,
+     const double alpha, const double  *a, const int lda,  const double  *x, const int incx,  const double beta,  double  *y, const int incy):
+    cdef char trans
+    if (order == CblasColMajor):
+        if (TransA == CblasNoTrans):
+            trans = 'N';
+        elif (TransA == CblasTrans):
+            trans = 'T'
+        else:
+            trans = 'C'
+        (<dgemv_>dgemv)(&trans, &m, &n, &alpha, a, &lda, x, &incx, &beta, y, &incy)
+
+    else:
+        if (TransA == CblasNoTrans):
+            trans = 'T'
+        elif (TransA == CblasTrans):
+            trans = 'N'
+        else:
+            trans = 'N'
+
+        (<dgemv_>dgemv)(&trans, &n, &m, &alpha, a, &lda, x, &incx, &beta, y, &incy)
+
+##################
+
+cdef public float cblas_sdot(const int n, const float *x, const int incx, const float *y, const int incy):
+    return (<sdot_>sdot)(&n, x, &incx, y, &incy)
+
+cdef public void cblas_saxpy(const int n, const float alpha, const float *x, const int incx, float *y, const int incy):
+    (<saxpy_>saxpy)(&n, &alpha, x, &incx, y, &incy)
+
+cdef public void cblas_sscal(const int N, const float alpha, float *X, const int incX):
+    (<sscal_>sscal)(&N, &alpha, X, &incX)
+
+cdef public float cblas_snrm2(const int n, const float *x, const int incx):
+    return (<snrm2_>snrm2)(&n, x, &incx)
+
+### Note: Cython refuses to compile a public cdef'd function with enum arguments
+cdef public void cblas_sgemv(const int order,  const int TransA,  const int m, const int n,
+     const float alpha, const float  *a, const int lda,  const float  *x, const int incx,  const float beta,  float  *y, const int incy):
+    cdef char trans
+    if (order == CblasColMajor):
+        if (TransA == CblasNoTrans):
+            trans = 'N';
+        elif (TransA == CblasTrans):
+            trans = 'T'
+        else:
+            trans = 'C'
+        (<sgemv_>sgemv)(&trans, &m, &n, &alpha, a, &lda, x, &incx, &beta, y, &incy)
+
+    else:
+        if (TransA == CblasNoTrans):
+            trans = 'T'
+        elif (TransA == CblasTrans):
+            trans = 'N'
+        else:
+            trans = 'N'
+
+        (<sgemv_>sgemv)(&trans, &n, &m, &alpha, a, &lda, x, &incx, &beta, y, &incy)
+

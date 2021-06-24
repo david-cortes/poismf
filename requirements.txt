@@ -1,5 +1,4 @@
 numpy
 scipy
 cython
-findblas>=0.1.13
 pandas>=0.24

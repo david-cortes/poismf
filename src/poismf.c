@@ -178,6 +178,9 @@ void pg_iteration
 }
 
 /* Functions for Conjugate Gradient */
+/* TODO: when doing line searches without evaluating gradient (e.g. for CG),
+   this could be computed faster by keeping pt1=B*a_vec; pt2=B*alpha*grad,
+   and then evaluating only loss(pt1+step*pt2).  */
 void calc_fun_single(real_t a_row[], int k_int, real_t *f, void *data)
 {
     fdata* fun_data = (fdata*) data;
