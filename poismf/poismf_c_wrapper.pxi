@@ -299,16 +299,16 @@ from scipy.linalg.cython_blas cimport ddot, daxpy, dscal, dnrm2, dgemv
 from scipy.linalg.cython_blas cimport sdot, saxpy, sscal, snrm2, sgemv
 
 ctypedef double (*ddot_)(const int*, const double*, const int*, const double*, const int*) nogil
-ctypedef void (*daxpy_)(const int*, const double*, const double*, const int*, const double*, const int*) nogil
-ctypedef void (*dscal_)(const int*, const double*, const double*, const int*) nogil
+ctypedef void (*daxpy_)(const int*, const double*, const double*, const int*, double*, const int*) nogil
+ctypedef void (*dscal_)(const int*, const double*, double*, const int*) nogil
 ctypedef double (*dnrm2_)(const int*, const double*, const int*) nogil
-ctypedef void (*dgemv_)(const char*, const int*, const int*, const double*, const double*, const int*, const double*, const int*, const double*, const double*, const int*) nogil
+ctypedef void (*dgemv_)(const char*, const int*, const int*, const double*, const double*, const int*, const double*, const int*, const double*, double*, const int*) nogil
 
 ctypedef float (*sdot_)(const int*, const float*, const int*, const float*, const int*) nogil
-ctypedef void (*saxpy_)(const int*, const float*, const float*, const int*, const float*, const int*) nogil
-ctypedef void (*sscal_)(const int*, const float*, const float*, const int*) nogil
+ctypedef void (*saxpy_)(const int*, const float*, const float*, const int*, float*, const int*) nogil
+ctypedef void (*sscal_)(const int*, const float*, float*, const int*) nogil
 ctypedef float (*snrm2_)(const int*, const float*, const int*) nogil
-ctypedef void (*sgemv_)(const char*, const int*, const int*, const float*, const float*, const int*, const float*, const int*, const float*, const float*, const int*) nogil
+ctypedef void (*sgemv_)(const char*, const int*, const int*, const float*, const float*, const int*, const float*, const int*, const float*, float*, const int*) nogil
 
 ctypedef enum CBLAS_ORDER:
     CblasRowMajor = 101
