@@ -62,7 +62,7 @@ if not from_rtd:
         author = 'David Cortes',
         author_email = 'david.cortes.rivera@gmail.com',
         url = 'https://github.com/david-cortes/poismf',
-        version = '0.3.1',
+        version = '0.3.1-1',
         install_requires = ['numpy', 'pandas>=0.24', 'cython', 'scipy'],
         description = 'Fast and memory-efficient Poisson factorization for sparse count matrices',
         cmdclass = {'build_ext': build_ext_subclass},
@@ -97,7 +97,7 @@ else:
         author = 'David Cortes',
         author_email = 'david.cortes.rivera@gmail.com',
         url = 'https://github.com/david-cortes/poismf',
-        version = '0.3.1',
+        version = '0.3.1-1',
         install_requires = ['numpy', 'scipy', 'pandas>=0.24', 'cython'],
         description = 'Fast and memory-efficient Poisson factorization for sparse count matrices',
     )

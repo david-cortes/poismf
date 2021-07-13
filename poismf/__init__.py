@@ -1,6 +1,7 @@
 import pandas as pd, numpy as np
 import multiprocessing, os, warnings, ctypes
 from scipy.sparse import coo_matrix, csr_matrix, csc_matrix
+from copy import deepcopy
 from . import c_funs_double, c_funs_float
 
 __all__ = ["PoisMF"]
@@ -504,7 +505,10 @@ class PoisMF:
         assert self.is_fitted
 
         if self.copy_data:
-            X = X.copy()
+            if isinstance(X, tuple):
+                X = deepcopy(X)
+            else:
+                X = X.copy()
 
         if X.__class__.__name__ == 'DataFrame':
             assert X.shape[0] > 0
