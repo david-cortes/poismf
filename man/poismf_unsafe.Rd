@@ -24,8 +24,7 @@ documentation about `A` for more details.}
 \item{k}{The number of latent factors. \bold{Must match with the dimension of `A` and `B`}.}
 
 \item{...}{Other hyperparameters that can be passed to `poismf`. See the documentation
-for \link{poismf} for details about possible hyperparameters. Init type and seed are
-ignored as the `A` and `B` matrices are supposed to be passed already-initialized.}
+for \link{poismf} for details about possible hyperparameters.}
 }
 \value{
 A `poismf` model object. See the documentation for \link{poismf} for details.

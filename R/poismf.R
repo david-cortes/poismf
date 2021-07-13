@@ -30,6 +30,8 @@
 #' instability, and can turn out to spit all NaNs or zeros in the fitted
 #' parameters. The conjugate gradient and Newton-CG methods are not prone to
 #' such failed optimizations.
+#' 
+#' For reproducible results, random number generation seeds can be controlled through `set.seed`.
 #' @param X The counts matrix to factorize. Can be: \itemize{
 #' \item A `data.frame` with 3 columns, containing in this order:
 #' row index or user ID, column index or item ID, count value. The first two columns will
@@ -120,9 +122,6 @@
 #' and can help with instability and failed optimization cases. If passing this,
 #' it's recommended to try very large values (e.g. 10^2), and might require
 #' adjusting the other hyperparameters.
-#' @param init_type How to initialize the model parameters. One of `'gamma'` (will initialize
-#' them `~ Gamma(1, 1))` or `'unif'` (will initialize them `~ Unif(0, 1))`..
-#' @param seed Random seed to use for starting the factorizing matrices.
 #' @param handle_interrupt When receiving an interrupt signal, whether the model should stop
 #' early and leave a usable object with the parameters obtained up
 #' to the point when it was interrupted (when passing `TRUE`), or
@@ -213,7 +212,7 @@ poismf <- function(X, k = 50, method = "tncg",
                    niter = "auto", maxupd = "auto",
                    limit_step = TRUE, initial_step = 1e-7,
                    early_stop = TRUE, reuse_prev = FALSE,
-                   weight_mult = 1, init_type = "gamma", seed = 1,
+                   weight_mult = 1,
                    handle_interrupt = TRUE,
                    nthreads = parallel::detectCores()) {
     
@@ -238,8 +237,6 @@ poismf <- function(X, k = 50, method = "tncg",
     if (maxupd < 1) {stop("'maxupd' must be a positive integer.")}
     if (l1_reg < 0. | l2_reg < 0.) {stop("Regularization parameters must be non-negative.")}
     if (weight_mult <= 0.) { stop("'weight_mult' must be a positive number.") }
-    if (init_type != "gamma" & init_type != "uniform")
-        stop("'init_type' must be one of 'gamma' or 'uniform'.")
     
     ### Cast them to required type
     k            <- as.integer(k)
@@ -326,24 +323,8 @@ poismf <- function(X, k = 50, method = "tncg",
     )
     
     ### Initialize factor matrices
-    set.seed(seed)
-    if (size_within_int_range) {
-        if (init_type == "gamma") {
-            A <- -log(runif(dimA * k))
-            B <- -log(runif(dimB * k))
-        } else {
-            A <- runif(dimA * k)
-            B <- runif(dimB * k)
-        }
-    } else {
-        A <- .Call("large_rnd_vec", dimA, k, init_type == "gamma")
-        B <- .Call("large_rnd_vec", dimB, k, init_type == "gamma")
-        if (NROW(A) == 0 || NROW(B == 0)) {
-            stop("Memory error.")
-        }
-    }
-    A <- matrix(A, nrow=k)
-    B <- matrix(B, nrow=k)
+    A <- .Call("initialize_factors_mat", k, dimA)
+    B <- .Call("initialize_factors_mat", k, dimB)
     
     ### Run optimizer
     .Call("wrapper_run_poismf",
@@ -375,12 +356,10 @@ poismf <- function(X, k = 50, method = "tncg",
         initial_step = initial_step,
         early_stop = early_stop,
         reuse_prev = reuse_prev,
-        init_type = init_type,
         dimA = dimA,
         dimB = dimB,
         nnz = nnz,
-        nthreads = nthreads,
-        seed = seed
+        nthreads = nthreads
     )
     if (is_df) {
         out[["levels_A"]] <- levels_A
@@ -410,8 +389,7 @@ poismf <- function(X, k = 50, method = "tncg",
 #' @param Xcsc The `X` matrix in CSC format. Should be an object of class `Matrix::dgCMatrix`.
 #' @param k The number of latent factors. \bold{Must match with the dimension of `A` and `B`}.
 #' @param ... Other hyperparameters that can be passed to `poismf`. See the documentation
-#' for \link{poismf} for details about possible hyperparameters. Init type and seed are
-#' ignored as the `A` and `B` matrices are supposed to be passed already-initialized.
+#' for \link{poismf} for details about possible hyperparameters.
 #' @return A `poismf` model object. See the documentation for \link{poismf} for details.
 #' @examples
 #' library(poismf)
@@ -459,8 +437,7 @@ poismf__unsafe <- function(A, B, Xcsr, Xcsc, k, method="tncg",
                            early_stop = TRUE, reuse_prev = TRUE,
                            weight_mult=1.,
                            nthreads=parallel::detectCores(),
-                           init_type=NULL,
-                           seed=NULL, handle_interrupt=TRUE) {
+                           handle_interrupt=TRUE) {
     if (l2_reg == "auto")
         l2_reg <- switch(method, "tncg"=1e3, "cg"=1e5, "pg"=1e9)
     if (niter == "auto")
@@ -499,12 +476,10 @@ poismf__unsafe <- function(A, B, Xcsr, Xcsc, k, method="tncg",
         initial_step = initial_step,
         early_stop = early_stop,
         reuse_prev = reuse_prev,
-        init_type = "custom",
         dimA = dimA,
         dimB = dimB,
         nnz = NROW(Xcsr@x),
-        nthreads = nthreads,
-        seed = 0
+        nthreads = nthreads
     )
     class(out) <- "poismf"
     return(out)
@@ -947,8 +922,6 @@ print.poismf <- function(x, ...) {
     cat(sprintf("Dimensionality of factorization: %d\n", x$k))
     cat(sprintf("L1 regularization :%g - L2 regularization: %g\n", x$l1_reg, x$l2_reg))
     cat(sprintf("Iterations: %d - max upd. per iter: %d\n", x$niter, x$maxupd))
-    cat(sprintf("Initialization: %s", x$init_type))
-    if (x$init_type != "custom") cat(sprintf(" - random seed: %d", x$seed))
     cat("\n")
     
     if ("levels_A" %in% names(x)) {

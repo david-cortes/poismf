@@ -118,9 +118,6 @@ class PoisMF:
         and can help with instability and failed optimization cases. If passing this,
         it's recommended to try very large values (e.g. 10^2), and might require
         adjusting the other hyperparameters.
-    init_type : str
-        How to initialize the model parameters. One of 'gamma' (will initialize
-        them `~ Gamma(1, 1))` or 'unif' (will initialize them `~ Unif(0, 1))`.
     random_state : int, RandomState, or Generator
         Random seed to use to initialize model parameters. If passing a NumPy
         'RandomState', will use it to draw a random integer as initial seed.
@@ -187,7 +184,7 @@ class PoisMF:
                  niter = "auto", maxupd = "auto",
                  limit_step = True, initial_step = 1e-7,
                  early_stop = True, reuse_prev = False,
-                 weight_mult = 1.0, init_type = "gamma", random_state = 1,
+                 weight_mult = 1.0, random_state = 1,
                  reindex = True, copy_data = True, produce_dicts = False,
                  use_float = False, handle_interrupt = True, nthreads = -1):
         assert method in ["tncg", "cg", "pg"]
@@ -215,7 +212,6 @@ class PoisMF:
         assert l1_reg >= 0.
         assert initial_step > 0.
         assert weight_mult > 0.
-        assert init_type in ['gamma', 'unif']
         
         if nthreads < 1:
             nthreads = multiprocessing.cpu_count()
@@ -240,7 +236,6 @@ class PoisMF:
         self.l2_reg = float(l2_reg)
         self.initial_step = float(initial_step)
         self.weight_mult = float(weight_mult)
-        self.init_type = init_type
         self.niter = niter
         self.maxupd = maxupd
         self.method = method
@@ -348,20 +343,12 @@ class PoisMF:
             
 
     def _initialize_matrices(self):
-        if self.init_type == "gamma":
-            self.A = -np.log( self.random_state
-                                   .random(size = (self.nusers, self.k),
-                                           dtype = self._dtype)
-                                   .clip(min=1e-12, max=None) )
-            self.B = -np.log( self.random_state
-                                   .random(size = (self.nitems, self.k),
-                                           dtype = self._dtype)
-                                   .clip(min=1e-12, max=None) )
-        else:
-            self.A = self.random_state.random(size = (self.nusers, self.k),
-                                              dtype = self._dtype)
-            self.B = self.random_state.random(size = (self.nitems, self.k),
-                                              dtype = self._dtype)
+        ### This is the initialization that was used in the original HPF code
+        self.A = 0.3 + 0.01 * self.random_state.uniform(low=0, high=0.01, size=(self.nusers, self.k))
+        self.B = 0.3 + 0.01 * self.random_state.uniform(low=0, high=0.01, size=(self.nitems, self.k))
+        if (self._dtype != self.A.dtype):
+            self.A = self.A.astype(self._dtype)
+            self.B = self.B.astype(self._dtype)
     
     def _fit(self, csr, csc):
         c_funs = c_funs_float if self.use_float else c_funs_double
@@ -429,7 +416,6 @@ class PoisMF:
         self.nitems = B.shape[0]
         self.reindex = False
         self.produce_dicts = False
-        self.init_type = "custom"
         self._fit(Xcsr, Xcsc)
         self.is_fitted = True
         return self

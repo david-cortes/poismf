@@ -17,8 +17,6 @@ poismf(
   early_stop = TRUE,
   reuse_prev = FALSE,
   weight_mult = 1,
-  init_type = "gamma",
-  seed = 1,
   handle_interrupt = TRUE,
   nthreads = parallel::detectCores()
 )
@@ -126,11 +124,6 @@ and can help with instability and failed optimization cases. If passing this,
 it's recommended to try very large values (e.g. 10^2), and might require
 adjusting the other hyperparameters.}
 
-\item{init_type}{How to initialize the model parameters. One of `'gamma'` (will initialize
-them `~ Gamma(1, 1))` or `'unif'` (will initialize them `~ Unif(0, 1))`..}
-
-\item{seed}{Random seed to use for starting the factorizing matrices.}
-
 \item{handle_interrupt}{When receiving an interrupt signal, whether the model should stop
 early and leave a usable object with the parameters obtained up
 to the point when it was interrupted (when passing `TRUE`), or
@@ -169,6 +162,8 @@ When using proximal gradient method, this model is prone to numerical
 instability, and can turn out to spit all NaNs or zeros in the fitted
 parameters. The conjugate gradient and Newton-CG methods are not prone to
 such failed optimizations.
+
+For reproducible results, random number generation seeds can be controlled through `set.seed`.
 }
 \section{Fields}{
 

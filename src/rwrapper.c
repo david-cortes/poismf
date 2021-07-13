@@ -278,26 +278,18 @@ SEXP check_size_below_int_max
     return out;
 }
 
-SEXP large_rnd_vec
-(
-    SEXP dim1, SEXP dim2,
-    SEXP do_gamma
-)
+SEXP initialize_factors_mat(SEXP dim1, SEXP dim2)
 {
-    R_xlen_t tot_size = (size_t)Rf_asInteger(dim1) * (size_t)Rf_asInteger(dim2);
-    if (tot_size < 0) {
-        Rf_error("Requested array dimensions exceed R limits.");
-        return Rf_allocVector(REALSXP, 0);
-    }
-    SEXP out = PROTECT(Rf_allocVector(REALSXP, tot_size));
-    double *restrict ptr_vec = REAL(out);
+    /* This is the initialization that was used in the original HPF code */
+    SEXP out = PROTECT(Rf_allocMatrix(REALSXP, Rf_asInteger(dim1), Rf_asInteger(dim2)));
+    double *restrict ptr_mat = REAL(out);
+    size_t tot_size = (size_t)Rf_asInteger(dim1) * (size_t)Rf_asInteger(dim2);
     GetRNGstate();
-    for (size_t ix = 0; ix < (size_t)tot_size; ix++)
-        ptr_vec[ix] = unif_rand();
+    for (size_t ix = 0; ix < tot_size; ix++)
+        ptr_mat[ix] = unif_rand();
     PutRNGstate();
-    if (Rf_asLogical(do_gamma))
-        for (size_t ix = 0; ix < (size_t)tot_size; ix++)
-            ptr_vec[ix] = -log(ptr_vec[ix]);
+    for (size_t ix = 0; ix < tot_size; ix++)
+        ptr_mat[ix] = 0.3 + ptr_mat[ix] / 100.;
     UNPROTECT(1);
     return out;
 }
@@ -311,7 +303,7 @@ static const R_CallMethodDef callMethods [] = {
     {"wrapper_eval_llk", (DL_FUNC) &wrapper_eval_llk, 11},
     {"wrapper_topN", (DL_FUNC) &wrapper_topN, 9},
     {"check_size_below_int_max", (DL_FUNC) &check_size_below_int_max, 2},
-    {"large_rnd_vec", (DL_FUNC) &large_rnd_vec, 3},
+    {"initialize_factors_mat", (DL_FUNC) &initialize_factors_mat, 2},
     {NULL, NULL, 0}
 }; 
 
