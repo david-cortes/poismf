@@ -251,6 +251,14 @@ poismf <- function(X, k = 50, method = "tncg",
     niter        <- as.integer(niter)
     maxupd       <- as.integer(maxupd)
     nthreads     <- as.integer(nthreads)
+
+    if (nthreads > 1L && !.Call("R_has_openmp")) {
+        msg <- paste0("Attempting to use more than 1 thread, but ",
+                      "package was compiled without OpenMP support.")
+        if (tolower(Sys.info()[["sysname"]]) == "darwin")
+            msg <- paste0(msg, " See https://mac.r-project.org/openmp/")
+        warning(msg)
+    }
     
     method_code  <- switch(method,
                            "tncg" = 1L,
