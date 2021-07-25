@@ -9,6 +9,7 @@ cdef extern from "../src/poismf.h":
         tncg = 1
         cg = 2
         pg = 3
+    bint get_has_openmp() nogil
     int run_poismf(
         real_t *A, real_t *Xr, sparse_ix *Xr_indptr, sparse_ix *Xr_indices,
         real_t *B, real_t *Xc, sparse_ix *Xc_indptr, sparse_ix *Xc_indices,
@@ -60,6 +61,9 @@ cdef extern from "../src/poismf.h":
         sparse_ix *outp_ix, real_t *outp_score,
         size_t n_top, size_t n, int nthreads
     ) nogil
+
+def _get_has_openmp():
+    return get_has_openmp()
 
 def _run_poismf(
     np.ndarray[real_t, ndim=1] Xr,

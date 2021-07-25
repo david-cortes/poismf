@@ -221,6 +221,13 @@ class PoisMF:
         assert nthreads > 0
         assert isinstance(nthreads, int) or isinstance(nthreads, np.int64)
 
+        if (nthreads > 1) and not (c_funs_double._get_has_openmp()):
+            msg_omp  = "Attempting to use more than 1 thread, but "
+            msg_omp += "package was built without multi-threading "
+            msg_omp += "support - see the project's GitHub page for "
+            msg_omp += "more information."
+            warnings.warn(msg_omp)
+
         if isinstance(random_state, np.random.RandomState):
             random_state = random_state.randint(np.iinfo(np.int32).max)
         elif random_state is None:

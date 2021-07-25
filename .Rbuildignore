@@ -21,3 +21,4 @@
 ^requirements\.txt$
 ^pyproject\.toml$
 ^a\.out$
+^a\.exe

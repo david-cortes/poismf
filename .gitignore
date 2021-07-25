@@ -22,6 +22,10 @@ poismf.egg-info/*
 
 *.so
 *.o
+*.a
+*.out
+*.exe
+*.dylib
 *.Rhistory
 *.directory
 

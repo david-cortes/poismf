@@ -51,6 +51,16 @@ void set_interrup_global_variable(int s)
     }
 }
 
+/* For making sure that it's multi-threaded */
+bool get_has_openmp()
+{
+    #ifdef _OPENMP
+    return true;
+    #else
+    return false;
+    #endif
+}
+
 /* Helper functions */
 #define nonneg(x) (((x) > 0.)? (x) : 0.)
 

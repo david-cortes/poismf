@@ -35,14 +35,14 @@ or if that fails:
 pip install --no-use-pep517 poismf
 ```
 
-Requires some BLAS library such as MKL (`pip install mkl-devel`) or OpenBLAS - will attempt to use the same as NumPy is using. Also requires a C compiler such as GCC or Visual Studio (in windows + conda, install Visual Studio Build Tools, and select package MSVC140 in the install options).
+**Note for macOS users:** on macOS, the Python version of this package might compile **without** multi-threading capabilities. In order to enable multi-threading support, first install OpenMP:
+```
+brew install libomp
+```
+And then reinstall this package: `pip install --force-reinstall poismf`.
 
-**Note for macOS users:** on macOS, the Python version of this package will compile **without** multi-threading capabilities. This is due to default apple's redistribution of clang not providing OpenMP modules, and aliasing it to gcc which causes confusions in build scripts. If you have a non-apple version of clang with the OpenMP modules, or if you have gcc installed, you can compile this package with multi-threading enabled by setting up an environment variable `ENABLE_OMP=1`:
-```
-export ENABLE_OMP=1
-pip install isotree
-```
-(Alternatively, can also pass argument enable-omp to the setup.py file: `python setup.py install enable-omp`)
+
+Requires some BLAS library such as MKL (`pip install mkl-devel`) or OpenBLAS, and speed will depend mostly on the BLAS implementation. Also requires a C compiler such as GCC or Visual Studio (in windows + conda, install Visual Studio Build Tools, and select package MSVC140 in the install options).
 
 For any installation problems, please open an issue in GitHub providing information about your system (OS, BLAS, C compiler) and Python installation.
 
