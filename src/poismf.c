@@ -52,7 +52,7 @@ void set_interrup_global_variable(int s)
 }
 
 /* For making sure that it's multi-threaded */
-bool get_has_openmp()
+bool get_has_openmp(void)
 {
     #ifdef _OPENMP
     return true;

@@ -164,7 +164,7 @@ void cblas_tgemv(const int order,  const int TransA,  const int m, const int n,
 /* Function prototypes */
 
 /* poismf.c */
-bool get_has_openmp();
+bool get_has_openmp(void);
 void dscal_large(size_t n, real_t alpha, real_t *restrict x);
 void sum_by_cols(real_t *restrict out, real_t *restrict M, size_t nrow, size_t ncol);
 void adjustment_Bsum
