@@ -32,6 +32,9 @@
 #' such failed optimizations.
 #' 
 #' For reproducible results, random number generation seeds can be controlled through `set.seed`.
+#' 
+#' Models or recommendation quality can be evaluated using the
+#' \href{https://cran.r-project.org/package=recometrics}{recometrics} package.
 #' @param X The counts matrix to factorize. Can be: \itemize{
 #' \item A `data.frame` with 3 columns, containing in this order:
 #' row index or user ID, column index or item ID, count value. The first two columns will

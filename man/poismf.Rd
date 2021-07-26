@@ -164,6 +164,9 @@ parameters. The conjugate gradient and Newton-CG methods are not prone to
 such failed optimizations.
 
 For reproducible results, random number generation seeds can be controlled through `set.seed`.
+
+Models or recommendation quality can be evaluated using the
+\href{https://cran.r-project.org/package=recometrics}{recometrics} package.
 }
 \section{Fields}{
 

@@ -1,8 +1,15 @@
 Package: poismf
 Type: Package
 Title: Factorization of Sparse Counts Matrices Through Poisson Likelihood
-Version: 0.3.1
-Author: David Cortes [aut, cre, cph], Jean-Sebastien Roy [cph], Stephen Nash [cph]
+Version: 0.3.1-1
+Authors@R: c(
+  person(given="David", family="Cortes", role=c("aut", "cre", "cph"),
+         email="david.cortes.rivera@gmail.com"),
+  person(given="Jean-Sebastien", family="Roy", role="cph",
+         comment="Copyright holder of included tnc library"),
+  person(given="Stephen", family="Nash", role="cph",
+         comment="Copyright holder of included tnc library")
+  )
 Maintainer: David Cortes <david.cortes.rivera@gmail.com>
 URL: https://github.com/david-cortes/poismf
 BugReports: https://github.com/david-cortes/poismf/issues
