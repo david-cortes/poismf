@@ -312,7 +312,7 @@ static const R_CallMethodDef callMethods [] = {
     {"wrapper_topN", (DL_FUNC) &wrapper_topN, 9},
     {"check_size_below_int_max", (DL_FUNC) &check_size_below_int_max, 2},
     {"initialize_factors_mat", (DL_FUNC) &initialize_factors_mat, 2},
-    {"R_has_openmp", (DL_FUNC) &R_has_openmp, 1},
+    {"R_has_openmp", (DL_FUNC) &R_has_openmp, 0},
     {NULL, NULL, 0}
 }; 
 
