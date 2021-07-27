@@ -286,9 +286,6 @@ int tnc(int n, real_t x[], real_t *f, real_t g[], tnc_function * function,
             goto cleanup;
         }
         free_low = TNC_TRUE;
-        #ifndef _MSC_VER
-        #pragma omp simd
-        #endif
         for (i = 0; i < n; i++) {
             #ifdef USE_FLOAT
             low[i] = -HUGE_VALF;
@@ -305,9 +302,6 @@ int tnc(int n, real_t x[], real_t *f, real_t g[], tnc_function * function,
             goto cleanup;
         }
         free_up = TNC_TRUE;
-        #ifndef _MSC_VER
-        #pragma omp simd
-        #endif
         for (i = 0; i < n; i++) {
             #ifdef USE_FLOAT
             up[i] = HUGE_VALF;
