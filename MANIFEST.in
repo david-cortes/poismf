@@ -18,6 +18,7 @@ exclude poismf/*.cpp
 exclude poismf/*.h
 exclude poismf/*.hpp
 exclude src/Makevars
+exclude src/poismf-win.def
 exclude src/rwrapper.c
 exclude DESCRIPTION
 exclude NAMESPACE

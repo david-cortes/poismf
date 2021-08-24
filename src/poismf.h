@@ -78,6 +78,7 @@ extern "C" {
     #include <R.h>
     #include <R_ext/Rdynload.h>
     #include <R_ext/Print.h>
+    #include <R_ext/Visibility.h>
     #define fprintf(f, ...) REprintf(__VA_ARGS__)
     #define sparse_ix int
     #undef USE_FLOAT

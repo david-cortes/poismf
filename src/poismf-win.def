@@ -1,0 +1,3 @@
+LIBRARY poismf.dll
+EXPORTS
+ R_init_poismf
