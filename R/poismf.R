@@ -255,7 +255,7 @@ poismf <- function(X, k = 50, method = "tncg",
     maxupd       <- as.integer(maxupd)
     nthreads     <- as.integer(nthreads)
 
-    if (nthreads > 1L && !.Call("R_has_openmp")) {
+    if (nthreads > 1L && !.Call(R_has_openmp)) {
         msg <- paste0("Attempting to use more than 1 thread, but ",
                       "package was compiled without OpenMP support.")
         if (tolower(Sys.info()[["sysname"]]) == "darwin")
@@ -329,16 +329,16 @@ poismf <- function(X, k = 50, method = "tncg",
         stop("Error: integer overflow. Dimensions cannot be larger than 2^31-1.")
     }
     size_within_int_range <- (
-        .Call("check_size_below_int_max", dimA, k) &&
-        .Call("check_size_below_int_max", dimB, k)
+        .Call(check_size_below_int_max, dimA, k) &&
+        .Call(check_size_below_int_max, dimB, k)
     )
     
     ### Initialize factor matrices
-    A <- .Call("initialize_factors_mat", k, dimA)
-    B <- .Call("initialize_factors_mat", k, dimB)
+    A <- .Call(initialize_factors_mat, k, dimA)
+    B <- .Call(initialize_factors_mat, k, dimB)
     
     ### Run optimizer
-    .Call("wrapper_run_poismf",
+    .Call(wrapper_run_poismf,
           Xcsr@x, Xcsr@j, Xcsr@p,
           Xcsc@x, Xcsc@i, Xcsc@p,
           A, B, dimA, dimB, k,
@@ -463,7 +463,7 @@ poismf__unsafe <- function(A, B, Xcsr, Xcsc, k, method="tncg",
                           "cg"   = 2L,
                           "pg"   = 3L)
     method_code <- as.integer(method_code)
-    .Call("wrapper_run_poismf",
+    .Call(wrapper_run_poismf,
           Xcsr@x, Xcsr@j, Xcsr@p,
           Xcsc@x, Xcsc@i, Xcsc@p,
           A, B, dimA, dimB, k,
@@ -558,7 +558,7 @@ factors.single <- function(model, X, l2_reg = model$l2_reg, l1_reg = model$l1_re
         stop("'X' must be a data.frame or Matrix::dsparseVector.")
     }
     
-    return(.Call("wrapper_predict_factors",
+    return(.Call(wrapper_predict_factors,
                  model$k, model$Amean, model$reuse_prev,
                  xval, xind,
                  model$B, model$Bsum,
@@ -659,7 +659,7 @@ factors <- function(model, X, add_names=TRUE) {
                           "pg"   = 3)
     method_code <- as.integer(method_code)
     
-    Anew <- .Call("wrapper_predict_factors_multiple",
+    Anew <- .Call(wrapper_predict_factors_multiple,
                   as.integer(dimA), model$k,
                   model$B, model$Bsum, model$Amean,
                   Xcsr@p, Xcsr@j, Xcsr@x,
@@ -747,7 +747,7 @@ predict.poismf <- function(object, a, b = NULL, ...) {
 
     }
     
-    pred <- .Call("wrapper_predict_multiple",
+    pred <- .Call(wrapper_predict_multiple,
                   object$A, object$B, object$k,
                   ixA, ixB, object$nthreads)
     
@@ -811,7 +811,7 @@ topN_internal <- function(model, a_vec, n, include, exclude, output_score) {
     outp_ix <- integer(n)
     outp_score <- numeric(0)
     if (output_score) outp_score <- numeric(n)
-    .Call("wrapper_topN", outp_ix, outp_score,
+    .Call(wrapper_topN, outp_ix, outp_score,
           a_vec, model$B, model$dimB,
           include, exclude,
           n, model$nthreads)
@@ -1078,7 +1078,7 @@ poisson.llk <- function(model, X_test, full_llk = FALSE, include_missing = FALSE
         
     }
     
-    return(.Call("wrapper_eval_llk",
+    return(.Call(wrapper_eval_llk,
                  model$A, model$B, model$dimA,
                  model$dimB, model$k,
                  ixA, ixB, Xval,
