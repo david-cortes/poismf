@@ -42,11 +42,6 @@
    if wrapping it for a different language. */
 #ifdef _FOR_R
 
-#include <R_ext/Rdynload.h>
-#include <R.h>
-#include <Rinternals.h>
-#include <limits.h>
-#include <math.h>
 #include "poismf.h"
 
 /* FORTRAN-BLAS -> CBLAS */

@@ -65,6 +65,8 @@ extern "C" {
 #include <string.h>
 #include <stddef.h>
 #include <limits.h>
+#include <signal.h>
+typedef void (*sig_t_)(int);
 #ifdef _OPENMP
     #include <omp.h>
 #else
@@ -74,6 +76,7 @@ extern "C" {
     #define sparse_ix size_t
     #include <stdio.h>
 #else
+    #include <limits.h>
     #include <Rinternals.h>
     #include <R.h>
     #include <R_ext/Rdynload.h>
@@ -82,9 +85,8 @@ extern "C" {
     #define fprintf(f, ...) REprintf(__VA_ARGS__)
     #define sparse_ix int
     #undef USE_FLOAT
+    #include <Rinternals.h>
 #endif
-#include <signal.h>
-typedef void (*sig_t_)(int);
 
 #ifndef USE_FLOAT
     #ifndef real_t
