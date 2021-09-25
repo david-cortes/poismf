@@ -45,11 +45,16 @@
 #include "poismf.h"
 
 /* FORTRAN-BLAS -> CBLAS */
+#include <Rconfig.h>
 #include <R_ext/BLAS.h>
-double cblas_ddot(const int n, const double *x, const int incx, const double *y, const int incy) { return ddot_(&n, x, &incx, y, &incy); }
-void cblas_daxpy(const int n, const double alpha, const double *x, const int incx, double *y, const int incy) { daxpy_(&n, &alpha, x, &incx, y, &incy); }
-void cblas_dscal(const int N, const double alpha, double *X, const int incX) { dscal_(&N, &alpha, X, &incX); }
-double cblas_dnrm2(const int n, const double *x, const int incx) { return dnrm2_(&n, x, &incx); }
+#ifndef FCONE
+    #define FCONE
+#endif
+
+double cblas_ddot(const int n, const double *x, const int incx, const double *y, const int incy) { return F77_CALL(ddot)(&n, x, &incx, y, &incy); }
+void cblas_daxpy(const int n, const double alpha, const double *x, const int incx, double *y, const int incy) { F77_CALL(daxpy)(&n, &alpha, x, &incx, y, &incy); }
+void cblas_dscal(const int N, const double alpha, double *X, const int incX) { F77_CALL(dscal)(&N, &alpha, X, &incX); }
+double cblas_dnrm2(const int n, const double *x, const int incx) { return F77_CALL(dnrm2)(&n, x, &incx); }
 void cblas_dgemv(const CBLAS_ORDER order,  const CBLAS_TRANSPOSE TransA,  const int m, const int n,
          const double alpha, const double  *a, const int lda,  const double  *x, const int incx,  const double beta,  double  *y, const int incy)
 {
@@ -63,7 +68,7 @@ void cblas_dgemv(const CBLAS_ORDER order,  const CBLAS_TRANSPOSE TransA,  const 
         else
             trans = 'C';
 
-        dgemv_(&trans, &m, &n, &alpha, a, &lda, x, &incx, &beta, y, &incy);
+        F77_CALL(dgemv)(&trans, &m, &n, &alpha, a, &lda, x, &incx, &beta, y, &incy  FCONE);
     }
 
     else
@@ -75,7 +80,7 @@ void cblas_dgemv(const CBLAS_ORDER order,  const CBLAS_TRANSPOSE TransA,  const 
         else
             trans = 'N';
 
-        dgemv_(&trans, &n, &m, &alpha, a, &lda, x, &incx, &beta, y, &incy);
+        F77_CALL(dgemv)(&trans, &n, &m, &alpha, a, &lda, x, &incx, &beta, y, &incy  FCONE);
     }
 }
 
