@@ -614,6 +614,7 @@ PACKAGE_URL=''
 
 ac_subst_vars='LTLIBOBJS
 LIBOBJS
+FNTP_FLAG
 FNE_FLAG
 OMP_PLUS_ATOMIC
 OMP_PLUS_ATOMIC_L
@@ -3185,9 +3186,6 @@ fi
 
 
 
-#AX_CHECK_COMPILE_FLAG([-fno-math-errno], [FNE_FLAG="-fno-math-errno"], [FNE_FLAG=""])
-#AC_SUBST(FNE_FLAG)
-
 ac_ext=c
 ac_cpp='$CPP $CPPFLAGS'
 ac_compile='$CC -c $CFLAGS $CPPFLAGS conftest.$ac_ext >&5'
@@ -3212,6 +3210,30 @@ then :
   FNE_FLAG="-fno-math-errno"
 else $as_nop
   FNE_FLAG=""
+
+fi
+rm -f core conftest.err conftest.$ac_objext conftest.beam conftest.$ac_ext
+CFLAGS="$OLD_CFLAGS"
+
+
+OLD_CFLAGS="$CFLAGS"
+CFLAGS="$CFLAGS -fno-trapping-math"
+cat confdefs.h - <<_ACEOF >conftest.$ac_ext
+/* end confdefs.h.  */
+
+int
+main (void)
+{
+
+  ;
+  return 0;
+}
+_ACEOF
+if ac_fn_c_try_compile "$LINENO"
+then :
+  FNTP_FLAG="-fno-trapping-math"
+else $as_nop
+  FNTP_FLAG=""
 
 fi
 rm -f core conftest.err conftest.$ac_objext conftest.beam conftest.$ac_ext

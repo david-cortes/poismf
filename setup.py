@@ -24,6 +24,7 @@ class build_ext_subclass( build_ext ):
             self.add_march_native()
             self.add_openmp_linkage()
             self.add_no_math_errno()
+            self.add_no_trapping_math()
             if sys.platform[:3].lower() != "win":
                 self.add_link_time_optimization()
 
@@ -62,6 +63,13 @@ class build_ext_subclass( build_ext ):
             for e in self.extensions:
                 e.extra_compile_args.append(arg_fnme)
                 e.extra_link_args.append(arg_fnme)
+
+    def add_no_trapping_math(self):
+        arg_fntm = "-fno-trapping-math"
+        if self.test_supports_compile_arg(arg_fntm):
+            for e in self.extensions:
+                e.extra_compile_args.append(arg_fntm)
+                e.extra_link_args.append(arg_fntm)
 
     def add_openmp_linkage(self):
         arg_omp1 = "-fopenmp"
@@ -125,7 +133,7 @@ if not from_rtd:
         author = 'David Cortes',
         author_email = 'david.cortes.rivera@gmail.com',
         url = 'https://github.com/david-cortes/poismf',
-        version = '0.3.1-6',
+        version = '0.3.1-7',
         install_requires = ['numpy', 'pandas>=0.24', 'cython', 'scipy'],
         description = 'Fast and memory-efficient Poisson factorization for sparse count matrices',
         cmdclass = {'build_ext': build_ext_subclass},
@@ -162,7 +170,7 @@ else:
         author = 'David Cortes',
         author_email = 'david.cortes.rivera@gmail.com',
         url = 'https://github.com/david-cortes/poismf',
-        version = '0.3.1-6',
+        version = '0.3.1-7',
         install_requires = ['numpy', 'scipy', 'pandas>=0.24', 'cython'],
         description = 'Fast and memory-efficient Poisson factorization for sparse count matrices',
     )
