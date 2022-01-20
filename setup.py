@@ -21,10 +21,12 @@ class build_ext_subclass( build_ext ):
             for e in self.extensions:
                 e.extra_compile_args += ['/O2', '/openmp', '/fp:fast']
         else:
-            self.add_march_native()
+            if not self.check_cflags_contain_arch():
+                self.add_march_native()
             self.add_openmp_linkage()
             self.add_no_math_errno()
             self.add_no_trapping_math()
+            self.add_ffp_contract_fast()
             if sys.platform[:3].lower() != "win":
                 self.add_link_time_optimization()
 
@@ -39,6 +41,14 @@ class build_ext_subclass( build_ext ):
                 e.extra_compile_args += ['-O3', '-std=c99']
 
         build_ext.build_extensions(self)
+
+    def check_cflags_contain_arch(self):
+        if "CFLAGS" in os.environ:
+            arch_list = ["-march", "-mcpu", "-mtune", "-msse", "-msse2", "-msse3", "-mssse3", "-msse4", "-msse4a", "-msse4.1", "-msse4.2", "-mavx", "-mavx2"]
+            for flag in arch_list:
+                if flag in os.environ["CFLAGS"]:
+                    return True
+        return False
 
     def add_march_native(self):
         arg_march_native = "-march=native"
@@ -70,6 +80,13 @@ class build_ext_subclass( build_ext ):
             for e in self.extensions:
                 e.extra_compile_args.append(arg_fntm)
                 e.extra_link_args.append(arg_fntm)
+
+    def add_ffp_contract_fast(self):
+        arg_ffpc = "-ffp-contract=fast"
+        if self.test_supports_compile_arg(arg_ffpc):
+            for e in self.extensions:
+                e.extra_compile_args.append(arg_ffpc)
+                e.extra_link_args.append(arg_ffpc)
 
     def add_openmp_linkage(self):
         arg_omp1 = "-fopenmp"
@@ -133,7 +150,7 @@ if not from_rtd:
         author = 'David Cortes',
         author_email = 'david.cortes.rivera@gmail.com',
         url = 'https://github.com/david-cortes/poismf',
-        version = '0.3.1-7',
+        version = '0.3.1-8',
         install_requires = ['numpy', 'pandas>=0.24', 'cython', 'scipy'],
         description = 'Fast and memory-efficient Poisson factorization for sparse count matrices',
         cmdclass = {'build_ext': build_ext_subclass},
