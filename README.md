@@ -46,7 +46,7 @@ And then reinstall this package: `pip install --force-reinstall poismf`.
 
 ```
 export CFLAGS="-msse2"
-pip install ctpfrec
+pip install poismf
 ```
 
 or for creating wheels:
