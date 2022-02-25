@@ -10,7 +10,7 @@ factors.single(
   l2_reg = model$l2_reg,
   l1_reg = model$l1_reg,
   weight_mult = model$weight_mult,
-  maxupd = model$maxupd
+  maxupd = max(1000L, model$maxupd)
 )
 }
 \arguments{
@@ -29,7 +29,7 @@ as a `data.frame`, in which case will take the first column as the item/column i
 
 \item{weight_mult}{Weight multiplier for the positive entries over the missing entries.}
 
-\item{maxupd}{Maximum number of Newton-CG updates to perform. You might want to
+\item{maxupd}{Maximum number of TNCG updates to perform. You might want to
 increase this value depending on the use-case.}
 }
 \value{
@@ -42,8 +42,8 @@ function \link{factors} for getting factors for multiple users/rows at
 a time.
 
 This function works with one user at a time, and will use the
-truncated Newton-CG approach regardless of how the model was fit.
-Note that, since this optimization method will likely have
+TNCG solver regardless of how the model was fit.
+Note that, since this optimization method may have
 different optimal hyperparameters than the other methods, it
 offers the option of varying those hyperparameters in here.
 }

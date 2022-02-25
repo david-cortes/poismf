@@ -33,17 +33,6 @@ cdef extern from "../src/poismf.h":
         size_t n, int k,
         int nthreads
     ) nogil
-    long double eval_llk(
-        real_t *A,
-        real_t *B,
-        sparse_ix ixA[],
-        sparse_ix ixB[],
-        real_t *X,
-        size_t nnz, int k,
-        bint full_llk, bint include_missing,
-        size_t dimA, size_t dimB,
-        int nthreads
-    ) nogil
     int factors_multiple(
         real_t *A, real_t *B,
         real_t *Bsum, real_t *Amean,
@@ -215,43 +204,6 @@ def _predict_factors_multiple(
         raise MemoryError("Could not allocate enough memory.")
 
     return A
-
-def _eval_llk_test(
-        np.ndarray[real_t, ndim=2] A,
-        np.ndarray[real_t, ndim=2] B,
-        np.ndarray[size_t, ndim=1] ixA,
-        np.ndarray[size_t, ndim=1] ixB,
-        np.ndarray[real_t, ndim=1] X,
-        bint full_llk = 0, bint include_missing = 0,
-        int nthreads = 1
-    ):
-    if ixA.shape[0] == 0:
-        return 0.
-    cdef real_t *ptr_A = &A[0,0]
-    cdef real_t *ptr_B = &B[0,0]
-    cdef size_t *ptr_ixA = &ixA[0]
-    cdef size_t *ptr_ixB = &ixB[0]
-    cdef real_t *ptr_X = &X[0]
-    cdef size_t nnz = X.shape[0]
-    cdef size_t dimA = A.shape[0]
-    cdef size_t dimB = B.shape[0]
-    cdef int k = A.shape[1]
-    cdef long double res = 0
-    with nogil, boundscheck(False), nonecheck(False), wraparound(False):
-        res = eval_llk(
-            ptr_A,
-            ptr_B,
-            ptr_ixA,
-            ptr_ixB,
-            ptr_X,
-            nnz, k,
-            full_llk, include_missing,
-            dimA, dimB,
-            nthreads
-        )
-    if np.isnan(res):
-        raise MemoryError("Could not allocate enough memory.")
-    return res
 
 def _call_topN(
         np.ndarray[real_t, ndim=1] a_vec,

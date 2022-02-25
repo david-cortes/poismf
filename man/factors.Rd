@@ -56,13 +56,10 @@ for existing items (columns).
 
 This function will use the same method and hyperparameters with which the
 model was fit. If using this for recommender systems, it's recommended
-to use instead the function \link{factors.single}, even though the new factors
-obtained with that function might not end up being in the same scale as
-the original factors in `model$A`.
+to use instead the function \link{factors.single} as it's likely to be more precise.
 
-Note that, when using proximal gradient method (the default), results from this function
-and from `get.factor.matrices` on the same data might differ a lot. If this is a problem, it's
-recommended to use conjugate gradient instead.
+Note that, when using ``method='pg'`` (not recommended), results from this function
+and from `get.factor.matrices` on the same data might differ a lot.
 }
 \details{
 The factors are initialized to the mean of each column in the fitted model.

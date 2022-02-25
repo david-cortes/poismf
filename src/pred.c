@@ -12,7 +12,7 @@
 
     BSD 2-Clause License
 
-    Copyright (c) 2018-2021, David Cortes
+    Copyright (c) 2018-2022, David Cortes
     All rights reserved.
 
     Redistribution and use in source and binary forms, with or without
@@ -62,79 +62,6 @@ void predict_multiple
                                 B + (size_t)ixB[ix] * k_szt, 1);
     }
 }
-
-long double eval_llk
-(
-    real_t *restrict A,
-    real_t *restrict B,
-    sparse_ix ixA[],
-    sparse_ix ixB[],
-    real_t *restrict X,
-    size_t nnz, int k,
-    bool full_llk, bool include_missing,
-    size_t dimA, size_t dimB,
-    int nthreads
-)
-{
-    #if defined(_OPENMP) && ((_OPENMP < 200801) || defined(_WIN32) || defined(_WIN64))
-    long long ix = 0;
-    #else
-    size_t ix = 0;
-    #endif
-    real_t pred;
-    size_t k_szt = (size_t)k;
-    long double llk = 0;
-
-    real_t *restrict sumA = NULL;
-    real_t *restrict sumB = NULL;
-
-    if (!include_missing)
-    {
-        #pragma omp parallel for schedule(static) num_threads(nthreads) \
-                reduction(+:llk) private(pred) shared(A, B, ixA, ixB, k, k_szt, X, nnz)
-        for (ix = 0; ix < nnz; ix++)
-        {
-            pred = cblas_tdot(k, A + (size_t)ixA[ix] * k_szt, 1,
-                                 B + (size_t)ixB[ix] * k_szt, 1);
-            llk += X[ix] * log(pred) - pred;
-        }
-    }
-
-    else
-    {
-        sumA = (real_t*) malloc(k_szt * sizeof(real_t));
-        sumB = (real_t*) malloc(k_szt * sizeof(real_t));
-        if (sumA == NULL || sumB == NULL) {
-            fprintf(stderr, "Error: out of memory.\n");
-            llk = NAN;
-            goto cleanup;
-        }
-
-        sum_by_cols(sumA, A, dimA, k_szt);
-        sum_by_cols(sumB, B, dimB, k_szt);
-        #pragma omp parallel for schedule(static) num_threads(nthreads) \
-                reduction(+:llk) shared(X, nnz, A, B, ixA, ixB, k, k_szt)
-        for (ix = 0; ix < nnz; ix++)
-            llk += X[ix] * log(cblas_tdot(k, A + (size_t)ixA[ix] * k_szt, 1,
-                                             B + (size_t)ixB[ix] * k_szt, 1));
-        llk -= cblas_tdot(k, sumA, 1, sumB, 1);
-    }
-
-    if (full_llk)
-    {
-        long double llk_const = 0;
-        #pragma omp parallel for schedule(static) num_threads(nthreads) \
-                reduction(+:llk_const) shared(X, nnz)
-        for (ix = 0; ix < nnz; ix++)
-            llk_const += lgamma(X[ix] + 1.);
-        llk -= llk_const;
-    }
-
-    cleanup:
-        free(sumA);
-        free(sumB);
-    return llk;
-} 
 
 int factors_multiple
 (

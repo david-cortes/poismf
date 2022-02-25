@@ -47,6 +47,12 @@ will return a list with the item IDs and the scores.}
 \description{
 Rank top-N highest-predicted items for an existing user
 }
+\details{
+Even though the fitted model matrices might be sparse, they are always used
+in dense format here. In many cases it might be more efficient to produce the
+rankings externally through some library that would exploit the sparseness for
+much faster computations. The matrices can be access under `model$A` and `model$B`.
+}
 \seealso{
 \link{topN.new} \link{predict.poismf} \link{factors.single}
 }

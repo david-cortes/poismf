@@ -12,7 +12,7 @@
 
     BSD 2-Clause License
 
-    Copyright (c) 2018-2021, David Cortes
+    Copyright (c) 2018-2022, David Cortes
     All rights reserved.
 
     Redistribution and use in source and binary forms, with or without
@@ -217,29 +217,6 @@ SEXP wrapper_predict_factors_multiple
     return out;
 }
 
-SEXP wrapper_eval_llk
-(
-    SEXP A, SEXP B, SEXP dimA, SEXP dimB, SEXP k,
-    SEXP ixA, SEXP ixB, SEXP Xcoo,
-    SEXP full_llk, SEXP include_missing,
-    SEXP nthreads
-)
-{
-    long double llk = eval_llk(
-        REAL(A), REAL(B),
-        INTEGER(ixA), INTEGER(ixB), REAL(Xcoo),
-        (size_t) Rf_xlength(Xcoo), Rf_asInteger(k),
-        (bool) Rf_asLogical(full_llk), (bool) Rf_asLogical(include_missing),
-        (size_t) Rf_asInteger(dimA), (size_t) Rf_asInteger(dimB),
-        Rf_asInteger(nthreads)
-    );
-
-    SEXP out = PROTECT(Rf_allocVector(REALSXP, 1));
-    REAL(out)[0] = (double)llk;
-    UNPROTECT(1);
-    return out;
-}
-
 SEXP wrapper_topN
 (
     SEXP outp_ix, SEXP outp_score,
@@ -308,7 +285,6 @@ static const R_CallMethodDef callMethods [] = {
     {"wrapper_predict_multiple", (DL_FUNC) &wrapper_predict_multiple, 6},
     {"wrapper_predict_factors", (DL_FUNC) &wrapper_predict_factors, 12},
     {"wrapper_predict_factors_multiple", (DL_FUNC) &wrapper_predict_factors_multiple, 17},
-    {"wrapper_eval_llk", (DL_FUNC) &wrapper_eval_llk, 11},
     {"wrapper_topN", (DL_FUNC) &wrapper_topN, 9},
     {"check_size_below_int_max", (DL_FUNC) &check_size_below_int_max, 2},
     {"initialize_factors_mat", (DL_FUNC) &initialize_factors_mat, 2},

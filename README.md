@@ -1,28 +1,31 @@
 # Poisson Factorization
 
-Fast and memory-efficient non-negative matrix factorization for sparse counts data, based on Poisson likelihood with regularization. The algorithm is described in ["Fast Non-Bayesian Poisson Factorization for Implicit-Feedback Recommendations"](http://arxiv.org/abs/1811.01908) [*To be updated after last additions*].
+Fast and memory-efficient non-negative matrix factorization for sparse counts data which produces sparse factor matrices, based on Poisson likelihood with regularization. The method is described in ["Fast Non-Bayesian Poisson Factorization for Implicit-Feedback Recommendations"](http://arxiv.org/abs/1811.01908).
 
-The model is similar to [Hierarchical Poisson Factorization](https://arxiv.org/abs/1311.1704), but uses regularization instead of a bayesian hierarchical structure, and is fit through gradient-based methods instead of coordinate ascent.
+The model is similar to [Hierarchical Poisson Factorization](https://arxiv.org/abs/1311.1704), but uses regularization instead of a bayesian hierarchical structure, and is fit through gradient-based methods instead of coordinate ascent. It tries to approximate a sparse matrix of counts as a product of two lower-dimensional matrices in a way that maximizes Poisson likelihood - i.e.:
+```
+X ~ Poisson(A * t(B))
+```
 
 The implementation is in C with interfaces for Python and R.
 
-# Update 2020-23-05
-
-The conjugate gradient method in this package has been reworked, and it's no longer susceptible to failed optimizations. Using the conjugate gradient method coupled with large numbers of iterations is now very competitive in terms of both quality and speed against HPF (Bayesian version).
-
-Additionally, the package has now added a truncated Newton - Conjugate Gradient solver option (it bundles a modified version of Jean-Sebastien Roy's C version, which was taken from SciPy). This is slower than the other methods, and slower than HPF, but tends to result in better quality solutions and relateively sparse latent factors (i.e. many of them are zero-valued), which is oftentimes desirable.
+****************************
+[(Example Python notebook here)](http://nbviewer.jupyter.org/github/david-cortes/poismf/blob/master/example/example_poismf_lastfm.ipynb)
 
 # Model description
 
-This library tries to fit a low-rank factorization model in which some sparse `X` matrix of counts data is assumed to be Poisson-distributed, with parameters given by the product of two non-negative and lower-dimensional matrices - that is:
-```X ~ Poisson(A * t(B))```.
+This library tries to fit a low-rank approximate factorization model in which some sparse `X` matrix of counts data is assumed to be Poisson-distributed, with parameters given by the product of two non-negative and lower-dimensional matrices - that is:
+```
+X ~ Poisson(A * t(B))
+```
 
-The model is fit through maximum likelihood estimation (adding a regularization term) by alternating between updates to the `A` and `B` matrices, exploiting a shortcut for fast evaluation and optimization of Poisson likelihood when the `A` and `B` matrices are constrained to be non-negative and with no link function:
-![image](formula/pois_llk.png "poisson")
+The model is fit through maximum likelihood estimation (adding a regularization term on the factor matrices) by alternating between updates to the `A` and `B` matrices, exploiting a shortcut for fast evaluation and optimization of Poisson likelihood when the `A` and `B` matrices are constrained to be non-negative and with no link function.
 
-The intended use is for recommender systems, in which users are the rows of the `X` matrices, items the columns, and the non-zero values indicate interactions (e.g. clicks, views, plays, etc.) - the idea being that the items with the highest-predicted value for a given user are the best candidates to recommend. Nevertheless, can also be used for other domains such as topic modeling or as a general dimensionality reduction model - just take any mention of users as rows or documents and any mention of items as columns or words.
+The intended primary use is for recommender systems, in which users are the rows of the `X` matrices, items the columns, and the non-zero values indicate interactions (e.g. clicks, views, plays, etc.) - the idea being that the items with the highest-predicted value for a given user are the best candidates to recommend.
 
-Compared to other models, and depending on the optimization method used, this model has the advantage of producing sparse user and item factor matrices (i.e. most of the entries are exactly zero), which can be desirable in some situations.
+Nevertheless, can also be used for other domains such as topic modeling or as a general dimensionality reduction model - just take any mention of users as rows or documents and any mention of items as columns or words.
+
+Compared to other models, and depending on the optimization method used, this model has the advantage of producing very sparse user and item factor matrices (e.g. over 90% of the entries being exactly zero), which can be desirable in some situations.
 
 # Installation
 
@@ -45,13 +48,13 @@ And then reinstall this package: `pip install --force-reinstall poismf`.
 **IMPORTANT:** the setup script will try to add compilation flag `-march=native`. This instructs the compiler to tune the package for the CPU in which it is being installed, but the result might not be usable in other computers. If building a binary wheel of this package or putting it into a docker image which will be used in different machines, this can be overriden by manually supplying compilation `CFLAGS` as an environment variable with something related to architecture. For maximum compatibility (but slowest speed), assuming `x86-64` computers, it's possible to do something like this:
 
 ```
-export CFLAGS="-msse2"
+export CFLAGS="-march=x86-64"
 pip install poismf
 ```
 
 or for creating wheels:
 ```
-export CFLAGS="-msse2"
+export CFLAGS="-march=x86-64"
 python setup.py bwheel
 ```
 ** *
@@ -215,6 +218,6 @@ int run_poismf(
 
 * Cortes, David. "Fast Non-Bayesian Poisson Factorization for Implicit-Feedback Recommendations." arXiv preprint arXiv:1811.01908 (2018).
 
-* Li, Can. "A conjugate gradient type method for the nonnegative constraints optimization problems." Journal of Applied Mathematics 2013 (2013).
+* Nash, Stephen G. "Newton-type minimization via the Lanczos method." SIAM Journal on Numerical Analysis 21.4 (1984): 770-788.
 
-* Carlsson, Christer, et al. "User’s guide for TN/TNBC: Fortran routines for nonlinear optimization." Mathematical Sciences Dept. Tech. Rep. 307, The Johns Hopkins University. 1984.
+* Li, Can. "A conjugate gradient type method for the nonnegative constraints optimization problems." Journal of Applied Mathematics 2013 (2013).

@@ -11,7 +11,7 @@ poismf_unsafe(A, B, Xcsr, Xcsc, k, ...)
 assuming row-major order. Can be passed as a vector of dimension [dimA*k], or
 as a matrix of dimension [k, dimA]. Note that R matrices use column-major order,
 so if you want to pass an R matrix as initial values, you'll need to transpose it,
-hence the shape [k, dimA]. Recommended to initialize `~ Gamma(1,1)`.
+hence the shape [k, dimA]. Recommended to initialize `~ Uniform(0.3, 0.31)`.
 \bold{Will be modified in-place}.}
 
 \item{B}{Initial values for the item-factor matrix of dimensions [dimB, k]. See

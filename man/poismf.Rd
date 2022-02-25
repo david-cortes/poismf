@@ -42,59 +42,71 @@ Will also accept them in CSR and CSC format, but will be converted along the way
 }
 
 Passing sparse matrices is faster as it will not need to re-enumerate the rows and columns.
-Dense (regular) matrices will be converted to sparse.}
+Dense (regular) matrices will be converted to sparse format, which is inefficient.}
 
 \item{k}{Number of latent factors to use (dimensionality of the low-rank factorization).
-If `k` is small (e.g. `k=5`), it's recommended to use `method='pg'`.
-For large values, (e.g. `k=100`), it's recommended to use `method='tncg'`.
-For medium values (e.g. `k=50`), it's recommende to use either
-`method='tncg'` or `method='cg'`.}
+If `k` is very small (e.g. `k=3`), it's recommended to use `method='pg'`,
+otherwise it's recommended to use `method='tncg'`, and if using `method='cg'`,
+it's recommended to use large `k` (at least 100).}
 
-\item{method}{Optimization method to use. Options are: \itemize{
-\item `"tncg"` : will use a truncated Newton-CG method. This is the
-slowest option, but tends to find better local optima, and if run
-for many iterations, tends to produce sparse latent factor
-matrices.
-\item `"cg"` : will use a Conjugate Gradient method, which is faster
-than the truncated Newton-CG, but tends not to reach the best local
-optima. Usually, with this method and the default hyperparameters,
-the latent factor matrices will not be very sparse.
+\item{method}{Optimization method to use as inner solver. Options are: \itemize{
+\item `"tncg"` : will use the conjugate gradient method from reference [2].
+This is the slowest option, but tends to find better local optima, and
+if either run for many inner iterations (controlled by `maxupd`) or
+reusing previous solutions each time (controlled by `reuse_prev`),
+tends to produce sparse latent factor matrices.
+Note that when reusing previous solutions, fitting times are much faster
+and the quality of the results as evaluated by ranking-based recommendation
+quality metrics is almost as good, but solutions tend to be less sparse
+(see reference [1] for details).
+Unlike the other two, this solver is extremely unlikely to fail to produce
+results, and it is thus the recommended one.
+\item `"cg"` : will use the conjugate gradient method from reference [3],
+which is faster than the one from reference [2], but tends not to reach
+as good local optima. Usually, with this method and the default hyperparameters,
+the latent factor matrices will be very sparse, but note that it can
+fail to produce results (in which case the obtained factors will be
+very poor quality without warning) when `k` is small (recommended to
+use `k>=100` when using this solver).
 \item `"pg"` : will use a proximal gradient method, which is a lot faster
 than the other two and more memory-efficient, but tends to only work
 with very large regularization values, and doesn't find as good
-local optima, nor tends to result in sparse factors.
+local optima, nor tends to result in sparse factors. Under this method,
+top-N recommendations tend to have little variation from one user to another.
 }}
 
 \item{l2_reg}{Strength of L2 regularization. It is recommended to use small values
 along with `method='tncg'`, very large values along with `method='pg'`,
 and medium to large values with `method='cg'`. If passing `"auto"`,
-will set it to `10^3` TNCG, `10^4` for CG, and `10^9` for PG.}
+will set it to \eqn{10^3} for TNCG, \eqn{10^4} for CG, and \eqn{10^9} for PG.}
 
 \item{l1_reg}{Strength of L1 regularization. Not recommended.}
 
-\item{niter}{Number of alternating iterations to perform. One iteration denotes an update
+\item{niter}{Number of outer iterations to perform. One iteration denotes an update
 over both matrices. If passing `'auto'`, will set it to 10 for TNCG and PG,
 or to 30 for CG.
 
-Using more iterations usually leads to better results for CG and TNCG, at the
-expense of longer fitting times.}
+Using more iterations usually leads to better results for CG, at the
+expense of longer fitting times. TNCG is more likely to converge to
+a local optimum with fewer outer iterations, with further iterations
+not changing the values of any single factor.}
 
-\item{maxupd}{Maximum number of updates to each user/item vector within an iteration.
+\item{maxupd}{Maximum number of inner iterations for each user/item vector.
 Note: for 'method=TNCG', this means maximum number of \bold{function
 evaluations} rather than number of updates, so it should be higher.
 You might also want to try decreasing this while increasing `niter`.
 For `method='pg'`, this will be taken as the actual number of updates,
 as it does not perform a line search like the other methods.
-If passing `"auto"`, will set it to `5*k` for `method='tncg'`,
-25 for `method='cg'`, and 10 for `method='pg'`. If using
-`method='cg'`, you might also try instead setting `maxupd=1`
-and `niter=100`.}
+If passing `"auto"`, will set it to `15*k` for `method='tncg'`,
+5 for `method='cg'`, and 10 for `method='pg'`. If using
+`method='cg'`, one might also want to try other combinations such as
+`maxupd=1` and `niter=100`.}
 
 \item{limit_step}{When passing `method='cg'`, whether to limit the step sizes in each update
-so as to drive at most one variable to zero each time, as prescribed in [2].
+so as to drive at most one variable to zero each time, as prescribed in [3].
 If running the procedure for many iterations, it's recommended to set this
-to 'True'. You also might set `method='cg'` plus `maxupd=1` and
-`limit_step=FALSE` to reduce the algorithm to simple gradient descent
+to `TRUE`. You also might set `method='cg'` plus `maxupd=1` and
+`limit_step=FALSE` to reduce the algorithm to simple projected gradient descent
 with a line search.}
 
 \item{initial_step}{Initial step size to use for proximal gradient updates. Larger step sizes
@@ -106,15 +118,19 @@ perform a line seach instead.}
 iterations if the updates do not change the factors significantly or at all.}
 
 \item{reuse_prev}{In the TNCG method, whether to reuse the factors obtained in the previous
-iteration as starting point for the optimization procedure. This has the
+iteration as starting point for each inner update. This has the
 effect of reaching convergence much quicker, but will oftentimes lead to
 slightly worse solutions.
 
+If passing `FALSE` and `maxupd` is small, the obtained factors might not
+be sparse at all. If passing `TRUE`, they will typically be less sparse
+than when passing `FALSE` with large `maxupd` or than with `method='cg'`.
+
 Setting it to `TRUE` has the side effect of potentially making the factors
 obtained when fitting the model different from the factors obtained after
-calling the `factors` function with the same data the model was fit.
+calling the `predict_factors` function with the same data the model was fit.
 
-For the other methods, this is always assumed `TRUE`.}
+For methods other than TNCG, this is always assumed `TRUE`.}
 
 \item{weight_mult}{Extra multiplier for the weight of the positive entries over the missing
 entries in the matrix to factorize. Be aware that Poisson likelihood will
@@ -140,7 +156,7 @@ Creates a low-rank non-negative factorization of a sparse counts
 matrix by maximizing Poisson likelihood minus L1/L2 regularization, using
 gradient-based optimization procedures.
 
-The model idea is: \eqn{\mathbf{X} \approx \texttt{Poisson}(\mathbf{A} \mathbf{B}^T)}{
+The model idea is to approximate: \eqn{\mathbf{X} \sim \texttt{Poisson}(\mathbf{A} \mathbf{B}^T)}{
 X ~ Poisson(A*t(B))}
 
 Ideal for usage in recommender systems, in which the `X` matrix would consist of
@@ -149,23 +165,22 @@ representing the columns.
 }
 \details{
 In order to speed up the optimization procedures, it's recommended to use
-an optimized library for BLAS operations such as MKL or OpenBLAs.
+an optimized library for BLAS operations such as MKL or OpenBLAS (ideally the "openmp" variant).
 See \href{https://github.com/david-cortes/R-openblas-in-windows}{this link}
 for instructions on getting OpenBLAS in R for Windows.
 
-In order to obtain sparse latent factor matrices, you need to pass
-`method='tncg'` and a large `niter`, such as `niter=50` or `niter=100`.
-The L1 regularization approach is not recommended, even though it might
-also produce relatively sparse results with the other optimization methods.
-
 When using proximal gradient method, this model is prone to numerical
 instability, and can turn out to spit all NaNs or zeros in the fitted
-parameters. The conjugate gradient and Newton-CG methods are not prone to
-such failed optimizations.
+parameters. The TNCG method is not prone to such failed optimizations.
+
+Although the main idea behind this software is to produce sparse model/factor
+matrices, they are always taken in dense format when used inside this software,
+and as such, it might be faster to use these matrices through some other external
+library that would be able to exploit their sparsity.
 
 For reproducible results, random number generation seeds can be controlled through `set.seed`.
 
-Models or recommendation quality can be evaluated using the
+Model quality or recommendation quality can be evaluated using the
 \href{https://cran.r-project.org/package=recometrics}{recometrics} package.
 }
 \section{Fields}{
@@ -174,7 +189,7 @@ Models or recommendation quality can be evaluated using the
 \item{\code{A}}{The user/document/row-factor matrix (will be transposed due to R's
 column-major storage of matrices).}
 
-\item{\code{B}}{The item/word/column-factor matrix(will be transposed due to R's
+\item{\code{B}}{The item/word/column-factor matrix (will be transposed due to R's
 column-major storage of matrices).}
 
 \item{\code{levels_A}}{A vector indicating which user/row ID corresponds to each row
@@ -210,13 +225,6 @@ X <- X[!duplicated(X[, c("row_ix", "col_ix")]), ]
 ### X$col_ix <- paste0("item", X$col_ix)
 
 ### factorize the randomly-generated sparse matrix
-### good speed (proximal gradient)
-model <- poismf(X, k=5, method="pg", nthreads=1)
-
-### good quality, but slower (conjugate gradient)
-model <- poismf(X, k=5, method="cg", nthreads=1)
-
-### better quality, but much slower (truncated Newton-CG)
 model <- poismf(X, k=5, method="tncg", nthreads=1)
 
 ### (for sparse factors, use higher 'k' and larger data)
@@ -242,16 +250,16 @@ A_orig <- get.factor.matrices(model)$A
 sqrt(mean((A_full["2",] - A_orig["2",])^2))
 }
 \references{
-\itemize{
+\enumerate{
 \item Cortes, David.
 "Fast Non-Bayesian Poisson Factorization for Implicit-Feedback Recommendations."
 arXiv preprint arXiv:1811.01908 (2018).
+\item Nash, Stephen G.
+"Newton-type minimization via the Lanczos method."
+SIAM Journal on Numerical Analysis 21.4 (1984): 770-788.
 \item Li, Can.
 "A conjugate gradient type method for the nonnegative constraints optimization problems."
 Journal of Applied Mathematics 2013 (2013).
-\item Carlsson, Christer, et al.
-"User's guide for TN/TNBC: Fortran routines for nonlinear optimization."
-Mathematical Sciences Dept. Tech. Rep. 307, The Johns Hopkins University. 1984.
 }
 }
 \seealso{

@@ -12,7 +12,7 @@
 
     BSD 2-Clause License
 
-    Copyright (c) 2018-2021, David Cortes
+    Copyright (c) 2018-2022, David Cortes
     All rights reserved.
 
     Redistribution and use in source and binary forms, with or without
@@ -107,6 +107,8 @@ int cmp_argsort(const void *a, const void *b)
     return (v1 == v2)? 0 : ((v1 < v2)? 1 : -1);
 }
 
+/* TODO: could make a version of this for sparse matrices
+   in order to speed up the calculations. */
 int topN
 (
     real_t *restrict a_vec, real_t *restrict B, int k,

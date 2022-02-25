@@ -10,30 +10,29 @@
 #' matrix by maximizing Poisson likelihood minus L1/L2 regularization, using
 #' gradient-based optimization procedures.
 #' 
-#' The model idea is: \eqn{\mathbf{X} \approx \texttt{Poisson}(\mathbf{A} \mathbf{B}^T)}{
+#' The model idea is to approximate: \eqn{\mathbf{X} \sim \texttt{Poisson}(\mathbf{A} \mathbf{B}^T)}{
 #' X ~ Poisson(A*t(B))}
 #' 
 #' Ideal for usage in recommender systems, in which the `X` matrix would consist of
 #' interactions (e.g. clicks, views, plays), with users representing the rows and items
 #' representing the columns.
 #' @details In order to speed up the optimization procedures, it's recommended to use
-#' an optimized library for BLAS operations such as MKL or OpenBLAs.
+#' an optimized library for BLAS operations such as MKL or OpenBLAS (ideally the "openmp" variant).
 #' See \href{https://github.com/david-cortes/R-openblas-in-windows}{this link}
 #' for instructions on getting OpenBLAS in R for Windows.
 #' 
-#' In order to obtain sparse latent factor matrices, you need to pass
-#' `method='tncg'` and a large `niter`, such as `niter=50` or `niter=100`.
-#' The L1 regularization approach is not recommended, even though it might
-#' also produce relatively sparse results with the other optimization methods.
-#' 
 #' When using proximal gradient method, this model is prone to numerical
 #' instability, and can turn out to spit all NaNs or zeros in the fitted
-#' parameters. The conjugate gradient and Newton-CG methods are not prone to
-#' such failed optimizations.
+#' parameters. The TNCG method is not prone to such failed optimizations.
+#' 
+#' Although the main idea behind this software is to produce sparse model/factor
+#' matrices, they are always taken in dense format when used inside this software,
+#' and as such, it might be faster to use these matrices through some other external
+#' library that would be able to exploit their sparsity.
 #' 
 #' For reproducible results, random number generation seeds can be controlled through `set.seed`.
 #' 
-#' Models or recommendation quality can be evaluated using the
+#' Model quality or recommendation quality can be evaluated using the
 #' \href{https://cran.r-project.org/package=recometrics}{recometrics} package.
 #' @param X The counts matrix to factorize. Can be: \itemize{
 #' \item A `data.frame` with 3 columns, containing in this order:
@@ -55,53 +54,65 @@
 #' }
 #' 
 #' Passing sparse matrices is faster as it will not need to re-enumerate the rows and columns.
-#' Dense (regular) matrices will be converted to sparse.
+#' Dense (regular) matrices will be converted to sparse format, which is inefficient.
 #' @param k Number of latent factors to use (dimensionality of the low-rank factorization).
-#' If `k` is small (e.g. `k=5`), it's recommended to use `method='pg'`.
-#' For large values, (e.g. `k=100`), it's recommended to use `method='tncg'`.
-#' For medium values (e.g. `k=50`), it's recommende to use either
-#' `method='tncg'` or `method='cg'`.
-#' @param method Optimization method to use. Options are: \itemize{
-#' \item `"tncg"` : will use a truncated Newton-CG method. This is the
-#' slowest option, but tends to find better local optima, and if run
-#' for many iterations, tends to produce sparse latent factor
-#' matrices.
-#' \item `"cg"` : will use a Conjugate Gradient method, which is faster
-#' than the truncated Newton-CG, but tends not to reach the best local
-#' optima. Usually, with this method and the default hyperparameters,
-#' the latent factor matrices will not be very sparse.
+#' If `k` is very small (e.g. `k=3`), it's recommended to use `method='pg'`,
+#' otherwise it's recommended to use `method='tncg'`, and if using `method='cg'`,
+#' it's recommended to use large `k` (at least 100).
+#' @param method Optimization method to use as inner solver. Options are: \itemize{
+#' \item `"tncg"` : will use the conjugate gradient method from reference [2].
+#' This is the slowest option, but tends to find better local optima, and
+#' if either run for many inner iterations (controlled by `maxupd`) or
+#' reusing previous solutions each time (controlled by `reuse_prev`),
+#' tends to produce sparse latent factor matrices.
+#' Note that when reusing previous solutions, fitting times are much faster
+#' and the quality of the results as evaluated by ranking-based recommendation
+#' quality metrics is almost as good, but solutions tend to be less sparse
+#' (see reference [1] for details).
+#' Unlike the other two, this solver is extremely unlikely to fail to produce
+#' results, and it is thus the recommended one.
+#' \item `"cg"` : will use the conjugate gradient method from reference [3],
+#' which is faster than the one from reference [2], but tends not to reach
+#' as good local optima. Usually, with this method and the default hyperparameters,
+#' the latent factor matrices will be very sparse, but note that it can
+#' fail to produce results (in which case the obtained factors will be
+#' very poor quality without warning) when `k` is small (recommended to
+#' use `k>=100` when using this solver).
 #' \item `"pg"` : will use a proximal gradient method, which is a lot faster
 #' than the other two and more memory-efficient, but tends to only work
 #' with very large regularization values, and doesn't find as good
-#' local optima, nor tends to result in sparse factors.
+#' local optima, nor tends to result in sparse factors. Under this method,
+#' top-N recommendations tend to have little variation from one user to another.
 #' }
 #' @param limit_step When passing `method='cg'`, whether to limit the step sizes in each update
-#' so as to drive at most one variable to zero each time, as prescribed in [2].
+#' so as to drive at most one variable to zero each time, as prescribed in [3].
 #' If running the procedure for many iterations, it's recommended to set this
-#' to 'True'. You also might set `method='cg'` plus `maxupd=1` and
-#' `limit_step=FALSE` to reduce the algorithm to simple gradient descent
+#' to `TRUE`. You also might set `method='cg'` plus `maxupd=1` and
+#' `limit_step=FALSE` to reduce the algorithm to simple projected gradient descent
 #' with a line search.
 #' @param l2_reg Strength of L2 regularization. It is recommended to use small values
 #' along with `method='tncg'`, very large values along with `method='pg'`,
 #' and medium to large values with `method='cg'`. If passing `"auto"`,
-#' will set it to `10^3` TNCG, `10^4` for CG, and `10^9` for PG.
+#' will set it to \eqn{10^3} for TNCG, \eqn{10^4} for CG, and \eqn{10^9} for PG.
 #' @param l1_reg Strength of L1 regularization. Not recommended.
-#' @param niter Number of alternating iterations to perform. One iteration denotes an update
+#' @param niter Number of outer iterations to perform. One iteration denotes an update
 #' over both matrices. If passing `'auto'`, will set it to 10 for TNCG and PG,
 #' or to 30 for CG.
 #' 
-#' Using more iterations usually leads to better results for CG and TNCG, at the
-#' expense of longer fitting times.
-#' @param maxupd Maximum number of updates to each user/item vector within an iteration.
+#' Using more iterations usually leads to better results for CG, at the
+#' expense of longer fitting times. TNCG is more likely to converge to
+#' a local optimum with fewer outer iterations, with further iterations
+#' not changing the values of any single factor.
+#' @param maxupd Maximum number of inner iterations for each user/item vector.
 #' Note: for 'method=TNCG', this means maximum number of \bold{function
 #' evaluations} rather than number of updates, so it should be higher.
 #' You might also want to try decreasing this while increasing `niter`.
 #' For `method='pg'`, this will be taken as the actual number of updates,
 #' as it does not perform a line search like the other methods.
-#' If passing `"auto"`, will set it to `5*k` for `method='tncg'`,
-#' 25 for `method='cg'`, and 10 for `method='pg'`. If using
-#' `method='cg'`, you might also try instead setting `maxupd=1`
-#' and `niter=100`.
+#' If passing `"auto"`, will set it to `15*k` for `method='tncg'`,
+#' 5 for `method='cg'`, and 10 for `method='pg'`. If using
+#' `method='cg'`, one might also want to try other combinations such as
+#' `maxupd=1` and `niter=100`.
 #' @param initial_step Initial step size to use for proximal gradient updates. Larger step sizes
 #' reach converge faster, but are more likely to result in failed optimization.
 #' Ignored when passing `method='tncg'` or `method='cg'`, as those will
@@ -109,15 +120,19 @@
 #' @param early_stop In the TNCG method, whether to stop before reaching the maximum number of
 #' iterations if the updates do not change the factors significantly or at all.
 #' @param reuse_prev In the TNCG method, whether to reuse the factors obtained in the previous
-#' iteration as starting point for the optimization procedure. This has the
+#' iteration as starting point for each inner update. This has the
 #' effect of reaching convergence much quicker, but will oftentimes lead to
 #' slightly worse solutions.
 #' 
+#' If passing `FALSE` and `maxupd` is small, the obtained factors might not
+#' be sparse at all. If passing `TRUE`, they will typically be less sparse
+#' than when passing `FALSE` with large `maxupd` or than with `method='cg'`.
+#' 
 #' Setting it to `TRUE` has the side effect of potentially making the factors
 #' obtained when fitting the model different from the factors obtained after
-#' calling the `factors` function with the same data the model was fit.
+#' calling the `predict_factors` function with the same data the model was fit.
 #' 
-#' For the other methods, this is always assumed `TRUE`.
+#' For methods other than TNCG, this is always assumed `TRUE`.
 #' @param weight_mult Extra multiplier for the weight of the positive entries over the missing
 #' entries in the matrix to factorize. Be aware that Poisson likelihood will
 #' implicitly put more weight on the non-missing entries already. Passing larger
@@ -131,21 +146,21 @@
 #' raise an interrupt exception without producing a fitted model object
 #' (when passing `FALSE`).
 #' @param nthreads Number of parallel threads to use.
-#' @references \itemize{
+#' @references \enumerate{
 #' \item Cortes, David.
 #' "Fast Non-Bayesian Poisson Factorization for Implicit-Feedback Recommendations."
 #' arXiv preprint arXiv:1811.01908 (2018).
+#' \item Nash, Stephen G.
+#' "Newton-type minimization via the Lanczos method."
+#' SIAM Journal on Numerical Analysis 21.4 (1984): 770-788.
 #' \item Li, Can.
 #' "A conjugate gradient type method for the nonnegative constraints optimization problems."
 #' Journal of Applied Mathematics 2013 (2013).
-#' \item Carlsson, Christer, et al.
-#' "User's guide for TN/TNBC: Fortran routines for nonlinear optimization."
-#' Mathematical Sciences Dept. Tech. Rep. 307, The Johns Hopkins University. 1984.
 #' }
 #' @return An object of class `poismf` with the following fields of interest:
 #' @field A The user/document/row-factor matrix (will be transposed due to R's
 #' column-major storage of matrices).
-#' @field B The item/word/column-factor matrix(will be transposed due to R's
+#' @field B The item/word/column-factor matrix (will be transposed due to R's
 #' column-major storage of matrices).
 #' @field levels_A A vector indicating which user/row ID corresponds to each row
 #' position in the `A` matrix. This will only be generated when passing `X` as a
@@ -178,13 +193,6 @@
 #' ### X$col_ix <- paste0("item", X$col_ix)
 #' 
 #' ### factorize the randomly-generated sparse matrix
-#' ### good speed (proximal gradient)
-#' model <- poismf(X, k=5, method="pg", nthreads=1)
-#' 
-#' ### good quality, but slower (conjugate gradient)
-#' model <- poismf(X, k=5, method="cg", nthreads=1)
-#' 
-#' ### better quality, but much slower (truncated Newton-CG)
 #' model <- poismf(X, k=5, method="tncg", nthreads=1)
 #' 
 #' ### (for sparse factors, use higher 'k' and larger data)
@@ -230,7 +238,7 @@ poismf <- function(X, k = 50, method = "tncg",
     if (niter == "auto")
         niter <-  switch(method, "tncg"=10L,  "cg"=30L, "pg"=10L)
     if (maxupd == "auto")
-        maxupd <- switch(method, "tncg"=5L*k, "cg"=5L, "pg"=1L)
+        maxupd <- switch(method, "tncg"=15L*as.integer(k), "cg"=5L, "pg"=1L)
     
     if (NROW(niter) > 1 || niter < 1) { stop("'niter' must be a positive integer.") }
     if (NROW(nthreads) > 1 || nthreads < 1) {nthreads <- parallel::detectCores()}
@@ -392,7 +400,7 @@ poismf <- function(X, k = 50, method = "tncg",
 #' assuming row-major order. Can be passed as a vector of dimension [dimA*k], or
 #' as a matrix of dimension [k, dimA]. Note that R matrices use column-major order,
 #' so if you want to pass an R matrix as initial values, you'll need to transpose it,
-#' hence the shape [k, dimA]. Recommended to initialize `~ Gamma(1,1)`.
+#' hence the shape [k, dimA]. Recommended to initialize `~ Uniform(0.3, 0.31)`.
 #' \bold{Will be modified in-place}.
 #' @param B Initial values for the item-factor matrix of dimensions [dimB, k]. See
 #' documentation about `A` for more details.
@@ -450,11 +458,11 @@ poismf__unsafe <- function(A, B, Xcsr, Xcsc, k, method="tncg",
                            nthreads=parallel::detectCores(),
                            handle_interrupt=TRUE) {
     if (l2_reg == "auto")
-        l2_reg <- switch(method, "tncg"=1e3, "cg"=1e5, "pg"=1e9)
+        l2_reg <- switch(method, "tncg"=1e3, "cg"=1e4, "pg"=1e9)
     if (niter == "auto")
-        niter <- switch(method, "tncg"=50L, "cg"=25L, "pg"=10L)
+        niter <- switch(method, "tncg"=10L, "cg"=30L, "pg"=10L)
     if (maxupd == "auto")
-        maxupd <- switch(method, "tncg"=5L*k, "cg"=5L, "pg"=1L)
+        maxupd <- switch(method, "tncg"=15L*k, "cg"=5L, "pg"=1L)
     
     dimA <- NROW(A) / (ifelse(is.null(dim(A)), k, 1))
     dimB <- NROW(B) / (ifelse(is.null(dim(B)), k, 1))
@@ -502,8 +510,8 @@ poismf__unsafe <- function(A, B, Xcsr, Xcsc, k, method="tncg",
 #' a time.
 #' 
 #' This function works with one user at a time, and will use the
-#' truncated Newton-CG approach regardless of how the model was fit.
-#' Note that, since this optimization method will likely have
+#' TNCG solver regardless of how the model was fit.
+#' Note that, since this optimization method may have
 #' different optimal hyperparameters than the other methods, it
 #' offers the option of varying those hyperparameters in here.
 #' @details The factors are initialized to the mean of each column in the fitted model.
@@ -517,14 +525,14 @@ poismf__unsafe <- function(A, B, Xcsr, Xcsc, k, method="tncg",
 #' @param l2_reg Strength of L2 regularization to use for optimizing the new factors.
 #' @param l1_reg Strength of the L1 regularization. Not recommended.
 #' @param weight_mult Weight multiplier for the positive entries over the missing entries.
-#' @param maxupd Maximum number of Newton-CG updates to perform. You might want to
+#' @param maxupd Maximum number of TNCG updates to perform. You might want to
 #' increase this value depending on the use-case.
 #' @return Vector of dimensionality `model$k` with the latent factors for the user,
 #' given the input data.
 #' @seealso \link{factors} \link{topN.new}
 #' @export
 factors.single <- function(model, X, l2_reg = model$l2_reg, l1_reg = model$l1_reg,
-                           weight_mult = model$weight_mult, maxupd = model$maxupd) {
+                           weight_mult = model$weight_mult, maxupd = max(1000L, model$maxupd)) {
     if ( ("levels_B" %in% names(model)) & !("data.frame" %in% class(X)) ) {
         stop("Must pass 'X' as data.frame if model was fit to X as data.frame.")
     }
@@ -573,13 +581,10 @@ factors.single <- function(model, X, l2_reg = model$l2_reg, l1_reg = model$l1_re
 #' 
 #' This function will use the same method and hyperparameters with which the
 #' model was fit. If using this for recommender systems, it's recommended
-#' to use instead the function \link{factors.single}, even though the new factors
-#' obtained with that function might not end up being in the same scale as
-#' the original factors in `model$A`.
+#' to use instead the function \link{factors.single} as it's likely to be more precise.
 #' 
-#' Note that, when using proximal gradient method (the default), results from this function
-#' and from `get.factor.matrices` on the same data might differ a lot. If this is a problem, it's
-#' recommended to use conjugate gradient instead.
+#' Note that, when using ``method='pg'`` (not recommended), results from this function
+#' and from `get.factor.matrices` on the same data might differ a lot.
 #' @details The factors are initialized to the mean of each column in the fitted model.
 #' @param model A Poisson factorization model as returned by `poismf`.
 #' @param X New data for whose rows to determine latent factors. Can be passed as
@@ -827,6 +832,10 @@ topN_internal <- function(model, a_vec, n, include, exclude, output_score) {
 }
 
 #' @title Rank top-N highest-predicted items for an existing user
+#' @details Even though the fitted model matrices might be sparse, they are always used
+#' in dense format here. In many cases it might be more efficient to produce the
+#' rankings externally through some library that would exploit the sparseness for
+#' much faster computations. The matrices can be access under `model$A` and `model$B`.
 #' @param model A Poisson factorization model as returned by `poismf`.
 #' @param user User for which to rank the items. If `X` passed to `poismf` was a
 #' `data.frame`, must match with the entries in its first column,
@@ -870,6 +879,10 @@ topN <- function(model, user, n = 10, include = NULL, exclude = NULL, output_sco
 #' `factors.single` - see the documentation of \link{factors.single}
 #' for details.
 #' 
+#' Just like \link{topN}, it does not exploit any potential sparsity in the
+#' fitted matrices and vectors, so it might be a lot faster to produce the
+#' recommendations externally (see the documentation for \link{topN} for details).
+#' 
 #' The factors are initialized to the mean of each column in the fitted model.
 #' @param model A Poisson factorization model as returned by `poismf`.
 #' @param X Data with the non-zero item indices and counts for this new user. Can be
@@ -896,7 +909,7 @@ topN <- function(model, user, n = 10, include = NULL, exclude = NULL, output_sco
 #' @param l2_reg Strength of L2 regularization to use for optimizing the new factors.
 #' @param l1_reg Strength of the L1 regularization. Not recommended.
 #' @param weight_mult Weight multiplier for the positive entries over the missing entries.
-#' @param maxupd Maximum number of Newton-CG updates to perform. You might want to
+#' @param maxupd Maximum number of TNCG updates to perform. You might want to
 #' increase this value depending on the use-case.
 #' @return \itemize{
 #'   \item If passing `output_score=FALSE` (the default), will return a vector of size `n`
@@ -913,7 +926,7 @@ topN <- function(model, user, n = 10, include = NULL, exclude = NULL, output_sco
 #' @export
 topN.new <- function(model, X, n = 10, include = NULL, exclude = NULL, output_score = FALSE,
                      l2_reg = model$l2_reg, l1_reg = model$l1_reg,
-                     weight_mult = model$weight_mult, maxupd = model$maxupd) {
+                     weight_mult = model$weight_mult, maxupd = max(1000L, model$maxupd)) {
     a_vec <- factors.single(model, X, l2_reg=l2_reg, l1_reg=l1_reg,
                             weight_mult=weight_mult, maxupd=maxupd)
     return(topN_internal(model, a_vec, n, include, exclude, output_score))
@@ -1010,78 +1023,4 @@ get.model.mappings <-  function(model) {
     } else {
         return(list(rows = NULL, columns = NULL))
     }
-}
-
-#' @title Evaluate Poisson log-likelihood for counts matrix
-#' @description Calculates Poisson log-likehood plus constant for new combinations
-#' of rows and columns of `X`. Intended to use as a test metric or for monitoring a validation set.
-#' 
-#' By default, this Poisson log-likelihood is calculated only for the combinations
-#' of users (rows) and items (columns) provided in `X_test` here, ignoring the
-#' missing entries. This is the usual use-case for evaluating a validation or test
-#' set, but can also be used for evaluating it on the training data with all
-#' missing entries included as zeros (see parameters for details).
-#' 
-#' Note that this calculates a \bold{sum} rather than an average.
-#' @details If using more than 1 thread, the results might vary slightly between runs.
-#' @param model A Poisson factorization model object as returned by `poismf`.
-#' @param X_test Input data on which to calculate log-likelihood, consisting of triplets.
-#' Can be passed as a `data.frame` or as a sparse COO/triplets matrix (class `Matrix::dgTMatrix` or
-#' `SparseM::matrix.coo`). If the `X` data passed to
-#' `poismf` was a `data.frame`, should pass a `data.frame` with entries corresponding
-#' to the same IDs, otherwise might pass either a `data.frame` with the row and column
-#' indices (starting at 1), or a sparse COO matrix.
-#' @param full_llk Whether to add to the number a constant given by the data which doesn't
-#' depend on the fitted parameters. If passing `False` (the default), there
-#' is some chance that the resulting log-likelihood will end up being
-#' positive - this is not an error, but is simply due to ommission of this
-#' constant. Passing `TRUE` might result in numeric overflow and low
-#' numerical precision.
-#' @param include_missing If `TRUE`, will calculate the Poisson log-likelihood for all entries
-#' (i.e. all combinations of users/items, whole matrix `X`),
-#' taking the missing ones as zero-valued. If passing `FALSE`, will
-#' calculate the Poisson log-likelihood only for the non-missing entries
-#' passed in `X_test` - this is usually the desired behavior when
-#' evaluating a test dataset.
-#' @return Obtained Poisson log-likelihood (higher is better).
-#' @seealso \link{poismf}
-#' @export
-poisson.llk <- function(model, X_test, full_llk = FALSE, include_missing = FALSE) {
-    if ( ("levels_A" %in% class(model)) & !("data.frame" %in% class(X_test)) ) {
-        stop("Must pass 'X_test' as data.frame if model was fit to X as data.frame.")
-    }
-
-    if ("data.frame" %in% class(X_test)) {
-
-        ixA  <- process.users.vec(model, X_test[[1]], "First column of 'X_test'")
-        ixB  <- process.items.vec(model, X_test[[2]], "Second column of 'X_test'")
-        Xval <- as.numeric(X_test[[3]])
-
-    } else {
-
-        dimA <- nrow(X_test)
-        dimB <- ncol(X_test)
-        if (is.null(dimA) | is.null(dimB)) {
-            stop("Invalid 'X_test'.")
-        }
-        if (dimA > model$dimA) stop("'X_test' cannot contain new rows.")
-        if (dimB > model$dimB) stop("'X_test' cannot contain new columns.")
-
-        if (!inherits(X_test, "TsparseMatrix"))
-            X_test <- as(X_test, "TsparseMatrix")
-        if (!inherits(X_test, "dsparseMatrix"))
-            X_test <- as(X_test, "dgTMatrix")
-        
-        ixA  <- X_test@i
-        ixB  <- X_test@j
-        Xval <- X_test@x
-        
-    }
-    
-    return(.Call(wrapper_eval_llk,
-                 model$A, model$B, model$dimA,
-                 model$dimB, model$k,
-                 ixA, ixB, Xval,
-                 as.logical(full_llk), as.logical(include_missing),
-                 model$nthreads))
 }

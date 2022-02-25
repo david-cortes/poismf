@@ -1,6 +1,6 @@
 import pandas as pd, numpy as np
 import multiprocessing, os, warnings, ctypes
-from scipy.sparse import coo_matrix, csr_matrix, csc_matrix
+from scipy.sparse import coo_matrix, csr_matrix, csc_matrix, isspmatrix_coo, isspmatrix_csr
 from copy import deepcopy
 from . import c_funs_double, c_funs_float
 
@@ -14,12 +14,8 @@ class PoisMF:
     factorization of sparse counts data (e.g. number of times a user played different
     songs), using gradient-based optimization procedures.
 
-    Note
-    ----
-    In order to obtain sparse latent factor matrices, you need to pass
-    ``method='tncg'`` and a large ``niter``, such as ``niter=50`` or ``niter=100``.
-    The L1 regularization approach is not recommended, even though it might
-    also produce relatively sparse results with the other optimization methods.
+    The model idea is to approximate:
+        :math:`\\mathbf{X} \\sim \\text{Poisson}(\\mathbf{A} \\mathbf{B}^T)`
 
     Note
     ----
@@ -33,64 +29,82 @@ class PoisMF:
 
     Note
     ----
+    Although the main idea behind this software is to produce sparse model/factor
+    matrices, they are always taken in dense format when used inside this software,
+    and as such, it might be faster to use these matrices through some other external
+    library that would be able to exploit their sparsity.
+
+    Note
+    ----
     When using proximal gradient method, this model is prone to numerical
     instability, and can turn out to spit all NaNs or zeros in the fitted
-    parameters. The conjugate gradient and Newton-CG methods are not prone to
-    such failed optimizations.
+    parameters. The TNCG method is not prone to such failed optimizations.
 
     Parameters
     ----------
     k : int
         Number of latent factors to use (dimensionality of the low-rank factorization).
-        If ``k`` is small (e.g. ``k=5``), it's recommended to use ``method='pg'``.
-        For large values, (e.g. ``k=100``), it's recommended to use ``method='tncg'``.
-        For medium values (e.g. ``k=50``), it's recommende to use either
-        ``method='tncg'`` or ``method='cg'``.
+        If ``k`` is very small (e.g. ``k=3``), it's recommended to use ``method='pg'``,
+        otherwise it's recommended to use ``method='tncg'``, and if using ``method='cg'``,
+        it's recommended to use large ``k`` (at least 100).
     method : bool
-        Optimization method to use. Options are:
-            * ``"tncg"`` : will use a truncated Newton-CG method. This is the
-              slowest option, but tends to find better local optima, and if run
-              for many iterations, tends to produce sparse latent factor
-              matrices.
-            * ``"cg"`` : will use a Conjugate Gradient method, which is faster
-              than the truncated Newton-CG, but tends not to reach the best local
-              optima. Usually, with this method and the default hyperparameters,
-              the latent factor matrices will not be very sparse.
+        Optimization method to use as inner solver. Options are:
+            * ``"tncg"`` : will use the conjugate gradient method from reference [2]_.
+              This is the slowest option, but tends to find better local optima, and
+              if either run for many inner iterations (controlled by ``maxupd``) or
+              reusing previous solutions each time (controlled by ``reuse_prev``),
+              tends to produce sparse latent factor matrices.
+              Note that when reusing previous solutions, fitting times are much faster
+              and the quality of the results as evaluated by ranking-based recommendation
+              quality metrics is almost as good, but solutions tend to be less sparse
+              (see reference [1]_ for details).
+              Unlike the other two, this solver is extremely unlikely to fail to produce
+              results, and it is thus the recommended one.
+            * ``"cg"`` : will use the conjugate gradient method from reference [3]_,
+              which is faster than the one from reference [2]_, but tends not to reach
+              as good local optima. Usually, with this method and the default hyperparameters,
+              the latent factor matrices will be very sparse, but note that it can
+              fail to produce results (in which case the obtained factors will be
+              very poor quality without warning) when ``k`` is small (recommended to
+              use ``k>=100`` when using this solver).
             * ``"pg"`` : will use a proximal gradient method, which is a lot faster
               than the other two and more memory-efficient, but tends to only work
               with very large regularization values, and doesn't find as good
-              local optima, nor tends to result in sparse factors.
+              local optima, nor tends to result in sparse factors. Under this method,
+              top-N recommendations tend to have little variation from one user to another.
     l2_reg : float
         Strength of L2 regularization. It is recommended to use small values
         along with ``method='tncg'``, very large values along with ``method='pg'``,
         and medium to large values with ``method='cg'``. If passing ``"auto"``,
-        will set it to 10^3 for TNCG, 10^4 for CG, and 10^9 for PG.
+        will set it to :math:`10^3` for TNCG, :math:`10^4` for CG, and :math:`10^9` for PG.
     l1_reg : float
         Strength of L1 regularization. Not recommended.
     niter : int
-        Number of alternating iterations to perform. One iteration denotes an update
+        Number of outer iterations to perform. One iteration denotes an update
         over both matrices. If passing ``'auto'``, will set it to 10 for TNCG and PG,
         or 30 for CG.
 
-        Using more iterations usually leads to better results for CG and TNCG, at the
-        expense of longer fitting times.
+        Using more iterations usually leads to better results for CG, at the
+        expense of longer fitting times. TNCG is more likely to converge to
+        a local optimum with fewer outer iterations, with further iterations
+        not changing the values of any single factor.
     maxupd : int
-        Maximum number of updates to each user/item vector within an iteration.
+        Maximum number of inner iterations for each user/item vector within.
         **Note: for 'method=TNCG', this means maximum number of function
         evaluations rather than number of updates, so it should be higher.**
         You might also want to try decreasing this while increasing ``niter``.
         For ``method='pg'``, this will be taken as the actual number of updates,
         as it does not perform a line search like the other methods.
-        If passing ``"auto"``, will set it to ``5*k`` for ``method='tncg'``,
-        25 for ``method='cg'``, and 10 for ``method='pg'``. If using
-        ``method='cg'``, you might also try instead setting ``maxupd=1``
-        and ``niter=100``.
+        If passing ``"auto"``, will set it to ``15*k`` for ``method='tncg'``,
+        5 for ``method='cg'``, and 10 for ``method='pg'``. If using
+        ``method='cg'``, one might also want to try other combinations such as
+        ``maxupd=1`` and ``niter=100``.
     limit_step : bool
         When passing ``method='cg'``, whether to limit the step sizes in each update
         so as to drive at most one variable to zero each time, as prescribed in [2].
         If running the procedure for many iterations, it's recommended to set this
         to 'True'. You also might set ``method='cg'`` plus ``maxupd=1`` and
-        ``limit_step=False`` to reduce the algorithm to simple gradient descent
+        ``limit_step=False`` to reduce the algorithm to simple projected gradient descent
         with a line search.
     initial_step : float
         Initial step size to use for proximal gradient updates. Larger step sizes
@@ -102,15 +116,19 @@ class PoisMF:
         iterations if the updates do not change the factors significantly or at all.
     reuse_prev : bool
         In the TNCG method, whether to reuse the factors obtained in the previous
-        iteration as starting point for the optimization procedure. This has the
+        iteration as starting point for each inner update. This has the
         effect of reaching convergence much quicker, but will oftentimes lead to
         slightly worse solutions.
+
+        If passing ``False`` and ``maxupd`` is small, the obtained factors might not
+        be sparse at all. If passing ``True``, they will typically be less sparse
+        than when passing ``False`` with large ``maxupd`` or than with ``method='cg'``.
 
         Setting it to ``True`` has the side effect of potentially making the factors
         obtained when fitting the model different from the factors obtained after
         calling the ``predict_factors`` function with the same data the model was fit.
         
-        For the other methods, this is always assumed ``True``.
+        For methods other than TNCG, this is always assumed ``True``.
     weight_mult : float > 0
         Extra multiplier for the weight of the positive entries over the missing
         entries in the matrix to factorize. Be aware that Poisson likelihood will
@@ -149,7 +167,11 @@ class PoisMF:
         (when passing 'False').
     nthreads : int
         Number of threads to use to parallelize computations.
-        If set to 0 or less, will use the maximum available on the computer.
+        If passing a number lower than 1, will use the same formula as joblib
+        does for calculating number of threads (which is
+        n_cpus + 1 + n_jobs - i.e. pass -1 to use all available threads).
+    n_jobs : int
+        Synonym for 'nthreads'.
     
     Attributes
     ----------
@@ -173,12 +195,12 @@ class PoisMF:
     .. [1] Cortes, David.
            "Fast Non-Bayesian Poisson Factorization for Implicit-Feedback Recommendations."
            arXiv preprint arXiv:1811.01908 (2018).
-    .. [2] Li, Can.
+    .. [2] Nash, Stephen G.
+           "Newton-type minimization via the Lanczos method."
+           SIAM Journal on Numerical Analysis 21.4 (1984): 770-788.
+    .. [3] Li, Can.
            "A conjugate gradient type method for the nonnegative constraints optimization problems."
            Journal of Applied Mathematics 2013 (2013).
-    .. [3] Carlsson, Christer, et al.
-           "User's guide for TN/TNBC: Fortran routines for nonlinear optimization."
-           Mathematical Sciences Dept. Tech. Rep. 307, The Johns Hopkins University. 1984.
     """
     def __init__(self, k = 50, method = "tncg",
                  l2_reg = "auto", l1_reg = 0.0,
@@ -187,7 +209,37 @@ class PoisMF:
                  early_stop = True, reuse_prev = False,
                  weight_mult = 1.0, random_state = 1,
                  reindex = True, copy_data = True, produce_dicts = False,
-                 use_float = False, handle_interrupt = True, nthreads = -1):
+                 use_float = True, handle_interrupt = True, nthreads = -1, n_jobs = None):
+        self.k = k
+        self.method = method
+        self.l2_reg = l2_reg
+        self.l1_reg = l1_reg
+        self.niter = niter
+        self.maxupd = maxupd
+        self.limit_step = limit_step
+        self.initial_step = initial_step
+        self.early_stop = early_stop
+        self.reuse_prev = reuse_prev
+        self.weight_mult = weight_mult
+        self.random_state = random_state
+        self.reindex = reindex
+        self.copy_data = copy_data
+        self.produce_dicts = produce_dicts
+        self.use_float = use_float
+        self.handle_interrupt = handle_interrupt
+        self.nthreads = nthreads
+        self.n_jobs = n_jobs
+
+    def _init(self, k = 50, method = "tncg",
+              l2_reg = "auto", l1_reg = 0.0,
+              niter = "auto", maxupd = "auto",
+              limit_step = True, initial_step = 1e-7,
+              early_stop = True, reuse_prev = False,
+              weight_mult = 1.0, random_state = 1,
+              reindex = True, copy_data = True, produce_dicts = False,
+              use_float = True, handle_interrupt = True, nthreads = -1, n_jobs = None):
+        if n_jobs is not None:
+            nthreads = n_jobs
         assert method in ["tncg", "cg", "pg"]
         if (isinstance(k, float) or
             isinstance(k, np.float32) or
@@ -198,7 +250,7 @@ class PoisMF:
         if l2_reg == "auto":
             l2_reg = {"tncg":1e3, "cg":1e4, "pg":1e9}[method]
         if maxupd == "auto":
-            maxupd = {"tncg":5*k, "cg":5, "pg":10}[method]
+            maxupd = {"tncg":15*k, "cg":5, "pg":10}[method]
         if niter == "auto":
             niter = {"tncg":10, "cg":30, "pg":10}[method]
 
@@ -213,20 +265,6 @@ class PoisMF:
         assert l1_reg >= 0.
         assert initial_step > 0.
         assert weight_mult > 0.
-        
-        if nthreads < 1:
-            nthreads = multiprocessing.cpu_count()
-        if nthreads is None:
-            nthreads = 1
-        assert nthreads > 0
-        assert isinstance(nthreads, int) or isinstance(nthreads, np.int64)
-
-        if (nthreads > 1) and not (c_funs_double._get_has_openmp()):
-            msg_omp  = "Attempting to use more than 1 thread, but "
-            msg_omp += "package was built without multi-threading "
-            msg_omp += "support - see the project's GitHub page for "
-            msg_omp += "more information."
-            warnings.warn(msg_omp)
 
         if isinstance(random_state, np.random.RandomState):
             random_state = random_state.randint(np.iinfo(np.int32).max)
@@ -237,15 +275,17 @@ class PoisMF:
         else:
             if not isinstance(random_state, np.random.Generator):
                 raise ValueError("Invalid 'random_state'.")
+
+        self._process_nthreads()
         
         ## storing these parameters
         self.k = k
-        self.l1_reg = float(l1_reg)
-        self.l2_reg = float(l2_reg)
+        self.l1_reg_ = float(l1_reg)
+        self.l2_reg_ = float(l2_reg)
         self.initial_step = float(initial_step)
         self.weight_mult = float(weight_mult)
-        self.niter = niter
-        self.maxupd = maxupd
+        self.niter_ = niter
+        self.maxupd_ = maxupd
         self.method = method
         self.limit_step = bool(limit_step)
         self.early_stop = bool(early_stop)
@@ -253,13 +293,12 @@ class PoisMF:
         self.use_float = bool(use_float)
         self._dtype = ctypes.c_float if self.use_float else ctypes.c_double
         self.handle_interrupt = bool(handle_interrupt)
-        self.nthreads = nthreads
 
         self.reindex = bool(reindex)
         self.produce_dicts = bool(produce_dicts)
         if not self.reindex:
             self.produce_dicts = False
-        self.random_state = random_state
+        self.random_state_ = random_state
         self.copy_data = bool(copy_data)
         
         self._reset_state()
@@ -272,6 +311,27 @@ class PoisMF:
         self.user_dict_ = dict()
         self.item_dict_ = dict()
         self.is_fitted = False
+
+    def _process_nthreads(self):
+        if self.n_jobs is not None:
+            nthreads = self.n_jobs
+        else:
+            nthreads = self.nthreads
+        if nthreads < 1:
+            nthreads = multiprocessing.cpu_count() + 1 + nthreads
+        if nthreads is None:
+            nthreads = 1
+        assert nthreads > 0
+        assert isinstance(nthreads, int) or isinstance(nthreads, np.int64)
+
+        if (nthreads > 1) and not (c_funs_double._get_has_openmp()):
+            msg_omp  = "Attempting to use more than 1 thread, but "
+            msg_omp += "package was built without multi-threading "
+            msg_omp += "support - see the project's GitHub page for "
+            msg_omp += "more information."
+            warnings.warn(msg_omp)
+
+        self.nthreads_ = nthreads
     
     def fit(self, X):
         """
@@ -292,9 +352,19 @@ class PoisMF:
         self : obj
             This object
         """
+        self._init(
+            k = self.k, method = self.method,
+            l2_reg = self.l2_reg, l1_reg = self.l1_reg,
+            niter = self.niter, maxupd = self.maxupd,
+            limit_step = self.limit_step, initial_step = self.initial_step,
+            early_stop = self.early_stop, reuse_prev = self.reuse_prev,
+            weight_mult = self.weight_mult, random_state = self.random_state,
+            reindex = self.reindex, copy_data = self.copy_data, produce_dicts = self.produce_dicts,
+            use_float = self.use_float, handle_interrupt = self.handle_interrupt,
+            nthreads = self.nthreads, n_jobs = self.n_jobs
+        )
 
         ## running each sub-process
-        self._reset_state()
         csr, csc = self._process_data(X)
         self._initialize_matrices()
         self._fit(csr, csc)
@@ -307,13 +377,13 @@ class PoisMF:
         if self.copy_data:
             X = X.copy()
 
-        if X.__class__.__name__ == 'coo_matrix':
+        if isspmatrix_coo(X):
             self.nusers = X.shape[0]
             self.nitems = X.shape[1]
             self.reindex = False
             coo = X
 
-        elif X.__class__.__name__ == 'DataFrame':
+        elif isinstance(X, pd.DataFrame):
             cols_require = ["UserId", "ItemId", "Count"]
             cols_missing = np.setdiff1d(np.array(cols_require),
                                         X.columns.values)
@@ -352,8 +422,8 @@ class PoisMF:
 
     def _initialize_matrices(self):
         ### This is the initialization that was used in the original HPF code
-        self.A = 0.3 + 0.01 * self.random_state.uniform(low=0, high=0.01, size=(self.nusers, self.k))
-        self.B = 0.3 + 0.01 * self.random_state.uniform(low=0, high=0.01, size=(self.nitems, self.k))
+        self.A = 0.3 + self.random_state_.uniform(low=0, high=0.01, size=(self.nusers, self.k))
+        self.B = 0.3 + self.random_state_.uniform(low=0, high=0.01, size=(self.nitems, self.k))
         if (self._dtype != self.A.dtype):
             self.A = self.A.astype(self._dtype)
             self.B = self.B.astype(self._dtype)
@@ -365,11 +435,11 @@ class PoisMF:
             csc.data, csc.indices, csc.indptr,
             self.A, self.B,
             self.method, self.limit_step,
-            self.l2_reg, self.l1_reg, self.weight_mult,
-            self.initial_step, self.niter, self.maxupd,
+            self.l2_reg_, self.l1_reg_, self.weight_mult,
+            self.initial_step, self.niter_, self.maxupd_,
             self.early_stop, self.reuse_prev,
-            self.handle_interrupt, self.nthreads)
-        self.Bsum = self.B.sum(axis = 0) + self.l1_reg
+            self.handle_interrupt, self.nthreads_)
+        self.Bsum = self.B.sum(axis = 0) + self.l1_reg_
         self.Amean = self.A.mean(axis = 0)
 
     def fit_unsafe(self, A, B, Xcsr, Xcsc):
@@ -445,8 +515,8 @@ class PoisMF:
         Note
         ----
         This function works with one user at a time, and will use the
-        truncated Newton-CG approach regardless of how the model was fit.
-        Note that, since this optimization method will likely have
+        TNCG solver regardless of how the model was fit.
+        Note that, since this optimization method may have
         different optimal hyperparameters than the other methods, it
         offers the option of varying those hyperparameters in here.
 
@@ -472,9 +542,10 @@ class PoisMF:
             Weight multiplier for the positive entries over the missing entries.
             If passing ``None``, will take the value set in the model object.
         maxupd : int > 0
-            Maximum number of Newton-CG updates to perform. You might want to
+            Maximum number of TNCG updates to perform. You might want to
             increase this value depending on the use-case.
-            If passing ``None``, will take the value set in the model object.
+            If passing ``None``, will take the value set in the model object,
+            clipped to a minimum of 1,000.
 
         Returns
         -------
@@ -482,13 +553,13 @@ class PoisMF:
             Calculated latent factors for the user, given the input data
         """
         if l2_reg is None:
-            l2_reg = self.l2_reg
+            l2_reg = self.l2_reg_
         if l1_reg is None:
-            l1_reg = self.l1_reg
+            l1_reg = self.l1_reg_
         if weight_mult is None:
             weight_mult = self.weight_mult
         if maxupd is None:
-            maxupd = self.maxupd
+            maxupd = max(1000, self.maxupd_)
 
         assert weight_mult > 0.
         ix, cnt = self._process_data_single(X)
@@ -500,7 +571,7 @@ class PoisMF:
                                         self.reuse_prev,
                                         int(maxupd),
                                         float(l2_reg),
-                                        float(l1_reg), float(self.l1_reg),
+                                        float(l1_reg), float(self.l1_reg_),
                                         float(weight_mult))
         if np.any(np.isnan(a_vec)):
             raise ValueError("NaNs encountered in the result. Failed to produce latent factors.")
@@ -517,7 +588,7 @@ class PoisMF:
             else:
                 X = X.copy()
 
-        if X.__class__.__name__ == 'DataFrame':
+        if isinstance(X, pd.DataFrame):
             assert X.shape[0] > 0
             assert 'ItemId' in X.columns.values
             assert 'Count' in X.columns.values
@@ -559,15 +630,12 @@ class PoisMF:
         ----
         This function will use the same method and hyperparameters with which the
         model was fit. If using this for recommender systems, it's recommended
-        to use instead the function 'predict_factors', even though the new factors
-        obtained with that function might not end up being in the same scale as
-        the original factors in 'self.A'.
+        to use instead the function 'predict_factors' as it's likely to be more precise.
 
         Note
         ----
-        When using proximal gradient method (the default), results from this function
-        and from 'fit' on the same datamight differ a lot. If this is a problem, it's
-        recommended to use conjugate gradient instead.
+        When using ``method='pg'`` (not recommended), results from this function
+        and from 'fit' on the same datamight differ a lot.
 
         Note
         ----
@@ -603,6 +671,7 @@ class PoisMF:
         """
         assert self.is_fitted
         assert X.shape[0] > 0
+        self._process_nthreads()
         Xr_indptr, Xr_indices, Xr, user_mapping_ = self._process_X_new_users(X)
         c_funs = c_funs_float if self.use_float else c_funs_double
         A = c_funs._predict_factors_multiple(
@@ -612,15 +681,15 @@ class PoisMF:
                 Xr_indptr,
                 Xr_indices,
                 Xr,
-                self.l2_reg,
+                self.l2_reg_,
                 self.weight_mult,
                 self.initial_step,
-                self.niter,
-                self.maxupd,
+                self.niter_,
+                self.maxupd_,
                 self.method,
                 self.limit_step,
                 self.reuse_prev,
-                self.nthreads
+                self.nthreads_
         )
 
         if user_mapping_.shape[0]:
@@ -632,7 +701,7 @@ class PoisMF:
         if self.copy_data:
             X = X.copy()
 
-        if X.__class__.__name__ == "DataFrame":
+        if isinstance(X, pd.DataFrame):
             cols_require = ["UserId", "ItemId", "Count"]
             if np.setdiff1d(np.array(cols_require), X.columns.values).shape[0]:
                 raise ValueError("'X' must contain columns " + ", ".join(cols_require))
@@ -643,9 +712,9 @@ class PoisMF:
         else:
             if self.reindex:
                 raise ValueError("'X' must be a DataFrame if using 'reindex=True'.")
-            if X.__class__.__name__ == "coo_matrix":
+            if isspmatrix_coo(X):
                 X = csr_matrix(X)
-            elif X.__class__.__name__ != "csr_matrix":
+            elif not isspmatrix_csr(X):
                 raise ValueError("'X' must be a DataFrame, CSR matrix, or COO matrix.")
             user_mapping_ = np.empty(0, dtype=int)
 
@@ -657,7 +726,7 @@ class PoisMF:
             X.indices.astype(ctypes.c_size_t),
             X.data.astype(self._dtype),
             user_mapping_
-            )
+        )
 
     
     def predict(self, user, item):
@@ -684,13 +753,14 @@ class PoisMF:
             Expected counts for the requested user(row)/item(column) combinations.
         """
         assert self.is_fitted
+        self._process_nthreads()
         if isinstance(user, list) or isinstance(user, tuple):
             user = np.array(user)
         if isinstance(item, list) or isinstance(item, tuple):
             item = np.array(item)
-        if user.__class__.__name__=='Series':
+        if isinstance(user, pd.Series):
             user = user.to_numpy()
-        if item.__class__.__name__=='Series':
+        if isinstance(item, pd.Series):
             item = item.to_numpy()
             
         if isinstance(user, np.ndarray):
@@ -762,7 +832,7 @@ class PoisMF:
                     item = item.astype(ctypes.c_size_t)
                 out = np.empty(user.shape[0], dtype = self._dtype)
                 c_funs._predict_multiple(out, self.A, self.B, user,
-                                         item, self.nthreads)
+                                         item, self.nthreads_)
                 return out
             else:
                 non_na_user = user[~nan_entries]
@@ -772,7 +842,7 @@ class PoisMF:
                 c_funs._predict_multiple(temp, self.A, self.B,
                                          non_na_user.astype(ctypes.c_size_t),
                                          non_na_item.astype(ctypes.c_size_t),
-                                         self.nthreads)
+                                         self.nthreads_)
                 out[~nan_entries] = temp
                 out[nan_entries] = np.nan
                 return out
@@ -781,6 +851,14 @@ class PoisMF:
     def topN(self, user, n=10, include=None, exclude=None, output_score=False):
         """
         Rank top-N highest-predicted items for an existing user
+
+        Note
+        ----
+        Even though the fitted model matrices might be sparse, they are always used
+        in dense format here. In many cases it might be more efficient to produce the
+        rankings externally through some library that would exploit the sparseness for
+        much faster computations. The matrices can be access under ``self.A`` and ``self.B``.
+
 
         Parameters
         ----------
@@ -824,6 +902,7 @@ class PoisMF:
             raise ValueError("'n' is larger than the available number of items.")
         if user is None:
             raise ValueError("Must pass a valid user.")
+        self._process_nthreads()
 
 
         if self.reindex:
@@ -854,7 +933,7 @@ class PoisMF:
             exclude,
             n,
             output_score,
-            self.nthreads
+            self.nthreads_
         )
 
         if self.reindex:
@@ -872,7 +951,7 @@ class PoisMF:
         if include is not None:
             if isinstance(include, list) or isinstance(include, tuple):
                 include = np.array(include)
-            elif include.__class__.__name__ == "Series":
+            elif isinstance(include, pd.Series):
                 include = include.to_numpy()
             elif not isinstance(include, np.ndarray):
                 raise ValueError("'include' must be a list, tuple, Series, or array.")
@@ -880,7 +959,7 @@ class PoisMF:
         if exclude is not None:
             if isinstance(exclude, list) or isinstance(exclude, tuple):
                 exclude = np.array(exclude)
-            elif exclude.__class__.__name__ == "Series":
+            elif isinstance(exclude, pd.Series):
                 exclude = exclude.to_numpy()
             elif not isinstance(exclude, np.ndarray):
                 raise ValueError("'exclude' must be a list, tuple, Series, or array.")
@@ -920,8 +999,8 @@ class PoisMF:
 
 
     def topN_new(self, X, n=10, include=None, exclude=None, output_score=False,
-                 l2_reg = 1e5, l1_reg = 0., weight_mult=1.,
-                 maxupd = 100):
+                 l2_reg = None, l1_reg = None, weight_mult=1.,
+                 maxupd = None):
         """
         Rank top-N highest-predicted items for a new user
 
@@ -930,6 +1009,10 @@ class PoisMF:
         This function calculates the latent factors in the same way as
         ``predict_factors`` - see the documentation of ``predict_factors``
         for details.
+
+        Just like ``topN``, it does not exploit any potential sparsity in the
+        fitted matrices and vectors, so it might be a lot faster to produce the
+        recommendations externally (see the documentation for ``topN`` for details).
 
         Note
         ----
@@ -970,9 +1053,10 @@ class PoisMF:
             Weight multiplier for the positive entries over the missing entries.
             If passing ``None``, will take the value set in the model object.
         maxupd : int > 0
-            Maximum number of Newton-CG updates to perform. You might want to
+            Maximum number of TNCG updates to perform. You might want to
             increase this value depending on the use-case.
-            If passing ``None``, will take the value set in the model object.
+            If passing ``None``, will take the value set in the model object,
+            clipped to a minimum of 1,000.
 
         Returns
         -------
@@ -994,6 +1078,7 @@ class PoisMF:
         if exclude.shape[0]:
             if n > (self.nitems - exclude.shape[0]):
                 raise ValueError("'n' is larger than the number of available items.")
+        self._process_nthreads()
 
         c_funs = c_funs_float if self.use_float else c_funs_double
         outp_ix, outp_score = c_funs._call_topN(
@@ -1003,7 +1088,7 @@ class PoisMF:
             exclude,
             n,
             output_score,
-            self.nthreads
+            self.nthreads_
         )
 
         if self.reindex:
@@ -1013,64 +1098,6 @@ class PoisMF:
         else:
             return outp_ix
 
-    
-    def eval_llk(self, X_test, full_llk=False, include_missing=False):
-        """
-        Evaluate Poisson log-likelihood (plus constant) for a given dataset
-        
-        Note
-        ----
-        By default, this Poisson log-likelihood is calculated only for the combinations
-        of users (rows) and items (columns) provided in ``X_test`` here, ignoring the
-        missing entries. This is the usual use-case for evaluating a validation or test
-        set, but can also be used for evaluating it on the training data with all
-        missing entries included as zeros (see parameters for details). Note that this calculates a *sum*, not an average.
-
-        Note
-        ----
-        If using more than 1 thread, the results might vary slightly between runs.
-
-        Parameters
-        ----------
-        X_test : Pandas DataFrame(nobs, 3) or COO(m, n)
-            Input data on which to calculate log-likelihood, consisting of IDs and
-            counts. If passing a DataFrame, must contain one row per non-zero
-            observaion, with columns 'UserId', 'ItemId', 'Count'.
-            If passing a sparse COO matrix, must have the same number of rows
-            and columns as the one that was passed to 'fit'. If using 'reindex=True',
-            cannot be passed as a COO matrix.
-        full_llk : bool
-            Whether to add to the number a constant given by the data which doesn't
-            depend on the fitted parameters. If passing 'False' (the default), there
-            is some chance that the resulting log-likelihood will end up being
-            positive - this is not an error, but is simply due to ommission of this
-            constant. Passing 'True' might result in numeric overflow and low
-            numerical precision.
-        include_missing : bool
-            If 'True', will calculate the Poisson log-likelihood for all entries
-            (i.e. all combinations of users/items, whole matrix 'X'),
-            taking the missing ones as zero-valued. If passing 'False', will
-            calculate the Poisson log-likelihood only for the non-missing entries
-            passed in 'X_test' - this is usually the desired behavior when
-            evaluating a test dataset.
-
-        Returns
-        -------
-        llk : float
-            Obtained log-likelihood (higher is better).
-        """
-        ixA, ixB, Xcoo = self._process_new_data(X_test)
-        c_funs = c_funs_float if self.use_float else c_funs_double
-        return c_funs._eval_llk_test(
-            self.A,
-            self.B,
-            ixA,
-            ixB,
-            Xcoo,
-            full_llk, include_missing,
-            self.nthreads
-        )
-
     def _process_new_data(self, X_test):
         assert self.is_fitted
 
@@ -1078,7 +1105,7 @@ class PoisMF:
             X_test = X_test.copy()
 
         if self.reindex:
-            if X_test.__class__.__name__ != "DataFrame":
+            if isinstance(X_test, pd.DataFrame):
                 raise ValueError("If using 'reindex=True', 'X_test' must be a DataFrame.")
             cols_require = ["UserId", "ItemId", "Count"]
             if np.setdiff1d(np.array(cols_require), X_test.columns.values).shape[0]:
@@ -1103,12 +1130,12 @@ class PoisMF:
                 X_test.UserId.to_numpy(),
                 X_test.ItemId.to_numpy(),
                 X_test.Count.to_numpy()
-                )
+            )
         else:
-            if X_test.__class__.__name__ == "DataFrame":
+            if isinstance(X_test, pd.DataFrame):
                 X_test = coo_matrix((X_test.Count, (X_test.UserId, X_test.ItemId)))
             else:
-                if X_test.__class__.__name__ != "coo_matrix":
+                if isspmatrix_coo(X_test):
                     raise ValueError("'X_test' must be a DataFrame or COO matrix.")
 
         if X_test.shape[0] > self.nusers:
@@ -1120,4 +1147,4 @@ class PoisMF:
             X_test.row.astype(ctypes.c_size_t),
             X_test.col.astype(ctypes.c_size_t),
             X_test.data.astype(self._dtype)
-            )
+        )

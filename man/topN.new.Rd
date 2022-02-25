@@ -14,7 +14,7 @@ topN.new(
   l2_reg = model$l2_reg,
   l1_reg = model$l1_reg,
   weight_mult = model$weight_mult,
-  maxupd = model$maxupd
+  maxupd = max(1000L, model$maxupd)
 )
 }
 \arguments{
@@ -52,7 +52,7 @@ will return a list with the item IDs and the scores.}
 
 \item{weight_mult}{Weight multiplier for the positive entries over the missing entries.}
 
-\item{maxupd}{Maximum number of Newton-CG updates to perform. You might want to
+\item{maxupd}{Maximum number of TNCG updates to perform. You might want to
 increase this value depending on the use-case.}
 }
 \value{
@@ -75,6 +75,10 @@ Rank top-N highest-predicted items for a new user
 This function calculates the latent factors in the same way as
 `factors.single` - see the documentation of \link{factors.single}
 for details.
+
+Just like \link{topN}, it does not exploit any potential sparsity in the
+fitted matrices and vectors, so it might be a lot faster to produce the
+recommendations externally (see the documentation for \link{topN} for details).
 
 The factors are initialized to the mean of each column in the fitted model.
 }
