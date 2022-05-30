@@ -2,7 +2,7 @@ try:
     import setuptools
     from setuptools import setup
     from setuptools import Extension
-except:
+except ImportError:
     from distutils.core import setup
     from distutils.extension import Extension
 import numpy
@@ -137,7 +137,7 @@ class build_ext_subclass( build_ext ):
                     cmd = list(self.compiler.compiler)
                 else:
                     cmd = self.compiler.compiler
-            except:
+            except Exception:
                 cmd = self.compiler.compiler
             val_good = subprocess.call(cmd + [fname])
             if with_omp:
@@ -146,13 +146,13 @@ class build_ext_subclass( build_ext ):
             try:
                 val = subprocess.call(cmd + comm + [fname])
                 is_supported = (val == val_good)
-            except:
+            except Exception:
                 is_supported = False
-        except:
+        except Exception:
             pass
         try:
             os.remove(fname)
-        except:
+        except Exception:
             pass
         return is_supported
 
@@ -165,7 +165,7 @@ if not from_rtd:
         author = 'David Cortes',
         author_email = 'david.cortes.rivera@gmail.com',
         url = 'https://github.com/david-cortes/poismf',
-        version = '0.4.0-1',
+        version = '0.4.0-2',
         install_requires = ['numpy', 'pandas>=0.24', 'cython', 'scipy'],
         description = 'Fast and memory-efficient Poisson factorization for sparse count matrices',
         cmdclass = {'build_ext': build_ext_subclass},
@@ -202,7 +202,7 @@ else:
         author = 'David Cortes',
         author_email = 'david.cortes.rivera@gmail.com',
         url = 'https://github.com/david-cortes/poismf',
-        version = '0.4.0-1',
+        version = '0.4.0-2',
         install_requires = ['numpy', 'scipy', 'pandas>=0.24', 'cython'],
         description = 'Fast and memory-efficient Poisson factorization for sparse count matrices',
     )

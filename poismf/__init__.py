@@ -774,7 +774,7 @@ class PoisMF:
                     if len(self.user_dict_):
                         try:
                             user = self.user_dict_[user]
-                        except:
+                        except Exception:
                             user = -1
                     else:
                         user = pd.Categorical(user, self.user_mapping_).codes[0]
@@ -783,7 +783,7 @@ class PoisMF:
                 if len(self.user_dict_):
                     try:
                         user = self.user_dict_[user]
-                    except:
+                    except Exception:
                         user = -1
                 else:
                     user = pd.Categorical(np.array([user]), self.user_mapping_).codes[0]
@@ -800,7 +800,7 @@ class PoisMF:
                     if len(self.item_dict_):
                         try:
                             item = self.item_dict_[item]
-                        except:
+                        except Exception:
                             item = -1
                     else:
                         item = pd.Categorical(item, self.item_mapping_).codes[0]
@@ -809,7 +809,7 @@ class PoisMF:
                 if len(self.item_dict_):
                     try:
                         item = self.item_dict_[item]
-                    except:
+                    except Exception:
                         item = -1
                 else:
                     item = pd.Categorical(np.array([item]), self.item_mapping_).codes[0]
