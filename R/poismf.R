@@ -736,7 +736,7 @@ predict.poismf <- function(object, a, b = NULL, ...) {
         if (!inherits(a, "TsparseMatrix"))
             a <- as(a, "TsparseMatrix")
         if (!inherits(a, "dgTMatrix"))
-            a <- as(a, "dgTMatrix")
+            stop("Invalid type for 'a'. Try passing as 'dgTMatrix'.")
         ixA <- process.users.vec(object, a@i + 1L)
         ixB <- process.items.vec(object, a@j + 1L)
         mat_dims <- a@Dim
