@@ -4,7 +4,7 @@
 \alias{predict.poismf}
 \title{Predict expected count for new row(user) and column(item) combinations}
 \usage{
-\method{predict}{poismf}(object, a, b = NULL, ...)
+\method{predict}{poismf}(object, a, b = NULL, nthreads = parallel::detectCores(), ...)
 }
 \arguments{
 \item{object}{A Poisson factorization model as returned by `poismf`.}
@@ -31,6 +31,8 @@ If `X` passed to `poismf` was a `data.frame`, should match with the entries in
 its second column. If `X` passed to `poismf` was a matrix, should indicate the
 column numbers (numeration starting at 1). If `a` is a sparse matrix, should not
 pass `b`.}
+
+\item{nthreads}{Number of parallel threads to use.}
 
 \item{...}{Not used.}
 }

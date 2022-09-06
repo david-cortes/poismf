@@ -4,7 +4,7 @@
 \alias{factors}
 \title{Determine latent factors for new rows/users}
 \usage{
-factors(model, X, add_names = TRUE)
+factors(model, X, add_names = TRUE, nthreads = parallel::detectCores())
 }
 \arguments{
 \item{model}{A Poisson factorization model as returned by `poismf`.}
@@ -37,6 +37,8 @@ columns) are integers, once row names are added, subsetting `X` by an integer
 will give the row at that position - that is, if you want to obtain the
 corresponding row for ID=2 from `X` in `A_out`, you need to use `A_out["2", ]`,
 not `A_out[2, ]`.}
+
+\item{nthreads}{Number of parallel threads to use.}
 }
 \value{
 \itemize{

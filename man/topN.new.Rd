@@ -14,7 +14,8 @@ topN.new(
   l2_reg = model$l2_reg,
   l1_reg = model$l1_reg,
   weight_mult = model$weight_mult,
-  maxupd = max(1000L, model$maxupd)
+  maxupd = max(1000L, model$maxupd),
+  nthreads = parallel::detectCores()
 )
 }
 \arguments{
@@ -54,6 +55,8 @@ will return a list with the item IDs and the scores.}
 
 \item{maxupd}{Maximum number of TNCG updates to perform. You might want to
 increase this value depending on the use-case.}
+
+\item{nthreads}{Number of parallel threads to use.}
 }
 \value{
 \itemize{

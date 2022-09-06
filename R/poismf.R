@@ -199,19 +199,19 @@
 #' 
 #' ### predict functionality (chosen entries in X)
 #' ### predict entry [1, 10] (row 1, column 10)
-#' predict(model, 1, 10)
+#' predict(model, 1, 10, nthreads=1)
 #' ### predict entries [1,4], [1,5], [1,6]
-#' predict(model, c(1, 1, 1), c(4, 5, 6))
+#' predict(model, c(1, 1, 1), c(4, 5, 6), nthreads=1)
 #' 
 #' ### ranking functionality (for recommender systems)
-#' topN(model, user=2, n=5, exclude=X$col_ix[X$row_ix==2])
+#' topN(model, user=2, n=5, exclude=X$col_ix[X$row_ix==2], nthreads=1)
 #' topN.new(model, X=X[X$row_ix==2, c("col_ix","count")],
-#'     n=5, exclude=X$col_ix[X$row_ix==2])
+#'     n=5, exclude=X$col_ix[X$row_ix==2], nthreads=1)
 #' 
 #' ### obtaining latent factors
 #' a_vec  <- factors.single(model,
 #'             X[X$row_ix==2, c("col_ix","count")])
-#' A_full <- factors(model, X)
+#' A_full <- factors(model, X, nthreads=1)
 #' A_orig <- get.factor.matrices(model)$A
 #' 
 #' ### (note that newly-obtained factors will differ slightly)
@@ -241,7 +241,6 @@ poismf <- function(X, k = 50, method = "tncg",
         maxupd <- switch(method, "tncg"=15L*as.integer(k), "cg"=5L, "pg"=1L)
     
     if (NROW(niter) > 1 || niter < 1) { stop("'niter' must be a positive integer.") }
-    if (NROW(nthreads) > 1 || nthreads < 1) {nthreads <- parallel::detectCores()}
     if (NROW(limit_step) < 1) { stop("'limit_step' must be a boolean/logical.") }
     if (NROW(initial_step) > 1 || initial_step <= 0)
         stop("'initial_step' must be a positive number.")
@@ -261,15 +260,7 @@ poismf <- function(X, k = 50, method = "tncg",
     reuse_prev   <- as.logical(reuse_prev)
     niter        <- as.integer(niter)
     maxupd       <- as.integer(maxupd)
-    nthreads     <- as.integer(nthreads)
-
-    if (nthreads > 1L && !.Call(R_has_openmp)) {
-        msg <- paste0("Attempting to use more than 1 thread, but ",
-                      "package was compiled without OpenMP support.")
-        if (tolower(Sys.info()[["sysname"]]) == "darwin")
-            msg <- paste0(msg, " See https://mac.r-project.org/openmp/")
-        warning(msg)
-    }
+    nthreads     <- check.nthreads(nthreads)
     
     method_code  <- switch(method,
                            "tncg" = 1L,
@@ -377,14 +368,32 @@ poismf <- function(X, k = 50, method = "tncg",
         reuse_prev = reuse_prev,
         dimA = dimA,
         dimB = dimB,
-        nnz = nnz,
-        nthreads = nthreads
+        nnz = nnz
     )
     if (is_df) {
         out[["levels_A"]] <- levels_A
         out[["levels_B"]] <- levels_B
     }
     return(structure(out, class = "poismf"))
+}
+
+check.nthreads <- function(nthreads) {
+    if (is.null(nthreads)) {
+        nthreads <- 1L
+    } else if (is.na(nthreads)) {
+        nthreads <- 1L
+    } else if (nthreads < 1L) {
+        nthreads <- 1L
+    }
+    nthreads <- as.integer(nthreads)
+    if (nthreads > 1L && !.Call(R_has_openmp)) {
+        msg <- paste0("Attempting to use more than 1 thread, but ",
+                      "package was compiled without OpenMP support.")
+        if (tolower(Sys.info()[["sysname"]]) == "darwin")
+            msg <- paste0(msg, " See https://mac.r-project.org/openmp/")
+        warning(msg)
+    }
+    return(nthreads)
 }
 
 #' @title Poisson factorization with no input casting
@@ -478,7 +487,7 @@ poismf__unsafe <- function(A, B, Xcsr, Xcsc, k, method="tncg",
           method_code, limit_step, l2_reg, l1_reg,
           weight_mult, initial_step,
           niter, maxupd, early_stop, reuse_prev,
-          handle_interrupt, nthreads)
+          handle_interrupt, check.nthreads(nthreads))
     out <- list(
         A = A,
         B = B,
@@ -497,8 +506,7 @@ poismf__unsafe <- function(A, B, Xcsr, Xcsc, k, method="tncg",
         reuse_prev = reuse_prev,
         dimA = dimA,
         dimB = dimB,
-        nnz = NROW(Xcsr@x),
-        nthreads = nthreads
+        nnz = NROW(Xcsr@x)
     )
     class(out) <- "poismf"
     return(out)
@@ -614,6 +622,7 @@ factors.single <- function(model, X, l2_reg = model$l2_reg, l1_reg = model$l1_re
 #' will give the row at that position - that is, if you want to obtain the
 #' corresponding row for ID=2 from `X` in `A_out`, you need to use `A_out["2", ]`,
 #' not `A_out[2, ]`.
+#' @param nthreads Number of parallel threads to use.
 #' @return \itemize{
 #'   \item If `X` was passed as a matrix, will output a matrix of dimensions (n, k)
 #'   with the obtained factors. If passing `add_names=TRUE` and `X` passed to
@@ -626,7 +635,7 @@ factors.single <- function(model, X, l2_reg = model$l2_reg, l1_reg = model$l1_re
 #' }
 #' @seealso \link{factors.single} \link{topN.new}
 #' @export
-factors <- function(model, X, add_names=TRUE) {
+factors <- function(model, X, add_names=TRUE, nthreads = parallel::detectCores()) {
     if ( ("levels_A" %in% names(model)) & !is.data.frame(X) ) {
         stop("Must pass 'X' as data.frame if model was fit to X as data.frame.")
     }
@@ -671,7 +680,7 @@ factors <- function(model, X, add_names=TRUE) {
                   model$l2_reg, model$weight_mult,
                   model$initial_step, model$niter, model$maxupd,
                   method_code, model$limit_step,
-                  model$reuse_prev, model$nthreads)
+                  model$reuse_prev, check.nthreads(nthreads))
     if (is.null(Anew))
         stop("Memory error.")
     Anew <- t(matrix(Anew, nrow=model$k))
@@ -709,6 +718,7 @@ factors <- function(model, X, add_names=TRUE) {
 #' its second column. If `X` passed to `poismf` was a matrix, should indicate the
 #' column numbers (numeration starting at 1). If `a` is a sparse matrix, should not
 #' pass `b`.
+#' @param nthreads Number of parallel threads to use.
 #' @param ... Not used.
 #' @return \itemize{
 #' \item If `a` and `b` were passed, will return a vector of length N with the
@@ -719,7 +729,7 @@ factors <- function(model, X, add_names=TRUE) {
 #' }
 #' @seealso \link{poismf} \link{topN} \link{factors}
 #' @export
-predict.poismf <- function(object, a, b = NULL, ...) {
+predict.poismf <- function(object, a, b = NULL, nthreads = parallel::detectCores(), ...) {
     if (is.null(a)) stop("Must pass 'a'.")
     
     if (is.null(b)) {
@@ -754,7 +764,7 @@ predict.poismf <- function(object, a, b = NULL, ...) {
     
     pred <- .Call(wrapper_predict_multiple,
                   object$A, object$B, object$k,
-                  ixA, ixB, object$nthreads)
+                  ixA, ixB, check.nthreads(nthreads))
     
     if (outp_matrix) {
         a@x <- pred
@@ -794,7 +804,7 @@ process.items.vec <- function(model, items, errname) {
     return(items)
 }
 
-topN_internal <- function(model, a_vec, n, include, exclude, output_score) {
+topN_internal <- function(model, a_vec, n, include, exclude, output_score, nthreads) {
     if (!is.null(include) & !is.null(exclude)) {
         stop("Can only pass one of 'include' or 'exclude'.")
     }
@@ -819,7 +829,7 @@ topN_internal <- function(model, a_vec, n, include, exclude, output_score) {
     .Call(wrapper_topN, outp_ix, outp_score,
           a_vec, model$B, model$dimB,
           include, exclude,
-          n, model$nthreads)
+          n, check.nthreads(nthreads))
     outp_ix <- outp_ix + 1
     if ("levels_B" %in% names(model)) {
         outp_ix <- model$levels_B[outp_ix]
@@ -854,6 +864,7 @@ topN_internal <- function(model, a_vec, n, include, exclude, output_score) {
 #' @param output_score Whether to output the scores in addition to the IDs. If passing
 #' `FALSE`, will return a single array with the item IDs, otherwise
 #' will return a list with the item IDs and the scores.
+#' @param nthreads Number of parallel threads to use.
 #' @return \itemize{
 #'   \item If passing `output_score=FALSE` (the default), will return a vector of size `n`
 #'   with the top-N highest predicted items for this user.If the `X` data passed to
@@ -867,11 +878,11 @@ topN_internal <- function(model, a_vec, n, include, exclude, output_score) {
 #' }
 #' @seealso \link{topN.new} \link{predict.poismf} \link{factors.single}
 #' @export
-topN <- function(model, user, n = 10, include = NULL, exclude = NULL, output_score=FALSE) {
+topN <- function(model, user, n = 10, include = NULL, exclude = NULL, output_score = FALSE, nthreads = parallel::detectCores()) {
     if (NROW(user) != 1) stop("'user' must be a single ID or row number.")
     user <- process.users.vec(model, user, "'user'")
     a_vec <- model$A[(user*model$k + 1) : ((user+1)*model$k)]
-    return(topN_internal(model, a_vec, n, include, exclude, output_score))
+    return(topN_internal(model, a_vec, n, include, exclude, output_score, nthreads))
 }
 
 #' @title Rank top-N highest-predicted items for a new user
@@ -911,6 +922,7 @@ topN <- function(model, user, n = 10, include = NULL, exclude = NULL, output_sco
 #' @param weight_mult Weight multiplier for the positive entries over the missing entries.
 #' @param maxupd Maximum number of TNCG updates to perform. You might want to
 #' increase this value depending on the use-case.
+#' @param nthreads Number of parallel threads to use.
 #' @return \itemize{
 #'   \item If passing `output_score=FALSE` (the default), will return a vector of size `n`
 #'   with the top-N highest predicted items for this user.If the `X` data passed to
@@ -926,10 +938,11 @@ topN <- function(model, user, n = 10, include = NULL, exclude = NULL, output_sco
 #' @export
 topN.new <- function(model, X, n = 10, include = NULL, exclude = NULL, output_score = FALSE,
                      l2_reg = model$l2_reg, l1_reg = model$l1_reg,
-                     weight_mult = model$weight_mult, maxupd = max(1000L, model$maxupd)) {
+                     weight_mult = model$weight_mult, maxupd = max(1000L, model$maxupd),
+                     nthreads = parallel::detectCores()) {
     a_vec <- factors.single(model, X, l2_reg=l2_reg, l1_reg=l1_reg,
                             weight_mult=weight_mult, maxupd=maxupd)
-    return(topN_internal(model, a_vec, n, include, exclude, output_score))
+    return(topN_internal(model, a_vec, n, include, exclude, output_score, nthreads))
 }
 
 #' @title Get information about poismf object

@@ -4,7 +4,15 @@
 \alias{topN}
 \title{Rank top-N highest-predicted items for an existing user}
 \usage{
-topN(model, user, n = 10, include = NULL, exclude = NULL, output_score = FALSE)
+topN(
+  model,
+  user,
+  n = 10,
+  include = NULL,
+  exclude = NULL,
+  output_score = FALSE,
+  nthreads = parallel::detectCores()
+)
 }
 \arguments{
 \item{model}{A Poisson factorization model as returned by `poismf`.}
@@ -30,6 +38,8 @@ one of `include` or `exclude`. Must not contain duplicated entries.}
 \item{output_score}{Whether to output the scores in addition to the IDs. If passing
 `FALSE`, will return a single array with the item IDs, otherwise
 will return a list with the item IDs and the scores.}
+
+\item{nthreads}{Number of parallel threads to use.}
 }
 \value{
 \itemize{

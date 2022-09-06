@@ -231,19 +231,19 @@ model <- poismf(X, k=5, method="tncg", nthreads=1)
 
 ### predict functionality (chosen entries in X)
 ### predict entry [1, 10] (row 1, column 10)
-predict(model, 1, 10)
+predict(model, 1, 10, nthreads=1)
 ### predict entries [1,4], [1,5], [1,6]
-predict(model, c(1, 1, 1), c(4, 5, 6))
+predict(model, c(1, 1, 1), c(4, 5, 6), nthreads=1)
 
 ### ranking functionality (for recommender systems)
-topN(model, user=2, n=5, exclude=X$col_ix[X$row_ix==2])
+topN(model, user=2, n=5, exclude=X$col_ix[X$row_ix==2], nthreads=1)
 topN.new(model, X=X[X$row_ix==2, c("col_ix","count")],
-    n=5, exclude=X$col_ix[X$row_ix==2])
+    n=5, exclude=X$col_ix[X$row_ix==2], nthreads=1)
 
 ### obtaining latent factors
 a_vec  <- factors.single(model,
             X[X$row_ix==2, c("col_ix","count")])
-A_full <- factors(model, X)
+A_full <- factors(model, X, nthreads=1)
 A_orig <- get.factor.matrices(model)$A
 
 ### (note that newly-obtained factors will differ slightly)
