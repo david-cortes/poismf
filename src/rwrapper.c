@@ -271,7 +271,7 @@ SEXP initialize_factors_mat(SEXP dim1, SEXP dim2)
     return out;
 }
 
-SEXP R_has_openmp()
+SEXP R_has_openmp(void)
 {
     #ifdef _OPENMP
     return Rf_ScalarLogical(1);
