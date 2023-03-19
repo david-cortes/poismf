@@ -130,7 +130,7 @@ class build_ext_subclass( build_ext ):
         args_apple_omp2 = ["-Xclang", "-fopenmp", "-L/usr/local/lib", "-lomp", "-I/usr/local/include"]
         has_brew_omp = False
         if is_apple:
-            res_brew_pref = subprocess.run(["brew", "--prefix", "libomp"], capture_output=silent_tests)
+            res_brew_pref = subprocess.run(["brew", "--prefix", "libomp"], capture_output=True)
             if res_brew_pref.returncode == EXIT_SUCCESS:
                 has_brew_omp = True
                 brew_omp_prefix = res_brew_pref.stdout.decode().strip()
@@ -216,7 +216,7 @@ if not from_rtd:
         packages = ["poismf"],
         author = 'David Cortes',
         url = 'https://github.com/david-cortes/poismf',
-        version = '0.4.0-4',
+        version = '0.4.0-5',
         install_requires = ['numpy', 'pandas>=0.24', 'cython', 'scipy'],
         description = 'Fast and memory-efficient Poisson factorization for sparse count matrices',
         cmdclass = {'build_ext': build_ext_subclass},
@@ -226,13 +226,20 @@ if not from_rtd:
                          "src/poismf.c", "src/topN.c", "src/pred.c",
                          "src/nonnegcg.c", "src/tnc.c"],
                 include_dirs=[numpy.get_include(), "src/"],
-                define_macros = [("_FOR_PYTHON", None)]),
+                define_macros = [
+                    ("_FOR_PYTHON", None),
+                    ("NDEBUG", None),
+                ]),
             Extension("poismf.c_funs_float",
                 sources=["poismf/cfuns_float.pyx",
                          "src/poismf.c", "src/topN.c", "src/pred.c",
                          "src/nonnegcg.c", "src/tnc.c"],
                 include_dirs=[numpy.get_include(), "src/"],
-                define_macros = [("_FOR_PYTHON", None), ("USE_FLOAT", None)])
+                define_macros = [
+                    ("_FOR_PYTHON", None),
+                    ("NDEBUG", None),
+                    ("USE_FLOAT", None)
+                ])
             ]
     )
 
@@ -253,7 +260,7 @@ else:
         author = 'David Cortes',
         author_email = 'david.cortes.rivera@gmail.com',
         url = 'https://github.com/david-cortes/poismf',
-        version = '0.4.0-3',
+        version = '0.4.0-5',
         install_requires = ['numpy', 'scipy', 'pandas>=0.24', 'cython'],
         description = 'Fast and memory-efficient Poisson factorization for sparse count matrices',
     )
