@@ -30,6 +30,9 @@ Compared to other models, and depending on the optimization method used, this mo
 # Installation
 
 * Python
+
+**Note:** requires a C compiler configured for Python. See [this guide](https://github.com/david-cortes/installing-optimized-libraries) for instructions.
+
 ```
 pip install poismf
 ```
@@ -59,11 +62,9 @@ pip install poismf
 ```
 ** *
 
-Requires some BLAS library such as MKL (`pip install mkl-devel`) or OpenBLAS, and speed will depend mostly on the BLAS implementation. Also requires a C compiler such as GCC or Visual Studio (in windows + conda, install Visual Studio Build Tools, and select package MSVC140 in the install options).
-
-For any installation problems, please open an issue in GitHub providing information about your system (OS, BLAS, C compiler) and Python installation.
-
 * R
+
+**Note:** This package benefits from extra optimizations that aren't enabled by default for R packages. See [this guide](https://github.com/david-cortes/installing-optimized-libraries) for instructions.
 
 ```r
 install.packages("poismf")
