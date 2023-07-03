@@ -1,6 +1,6 @@
 import pandas as pd, numpy as np
 import multiprocessing, os, warnings, ctypes
-from scipy.sparse import coo_matrix, csr_matrix, csc_matrix, isspmatrix_coo, isspmatrix_csr
+from scipy.sparse import issparse, coo_array
 from copy import deepcopy
 from . import c_funs_double, c_funs_float
 
@@ -144,7 +144,7 @@ class PoisMF:
         random numbers.
     reindex : bool
         Whether to reindex data internally. Will be ignored if passing a sparse
-        COO matrix to 'fit'.
+        COO array/matrix to 'fit'.
     copy_data : bool
         Whether to make deep copies of the data in order to avoid modifying it in-place.
         Passing 'False' is faster, but might modify the 'X' inputs in-place if they
@@ -345,7 +345,7 @@ class PoisMF:
             items being columns, or as a Pandas DataFrame, in which case it should
             have the following columns: 'UserId', 'ItemId', 'Count'.
             Combinations of users and items not present are implicitly assumed to be zero by the model. The non-missing entries must all be greater than zero.
-            If passing a COO matrix, will force 'reindex' to 'False'.
+            If passing a COO array/matrix, will force 'reindex' to 'False'.
 
         Returns
         -------
@@ -377,7 +377,7 @@ class PoisMF:
         if self.copy_data:
             X = X.copy()
 
-        if isspmatrix_coo(X):
+        if issparse(X) and (X.format == "coo"):
             self.nusers = X.shape[0]
             self.nitems = X.shape[1]
             self.reindex = False
@@ -399,14 +399,14 @@ class PoisMF:
                 self.user_mapping_ = self.user_mapping_
                 self.item_mapping_ = self.item_mapping_
 
-            coo = coo_matrix((X.Count, (X.UserId, X.ItemId)))
+            coo = coo_array((X.Count, (X.UserId, X.ItemId)))
 
         else:
             raise ValueError("'X' must be a pandas DataFrame or SciPy COO matrix.")
 
         self.nusers, self.nitems = coo.shape[0], coo.shape[1]
-        csr = csr_matrix(coo)
-        csc = csc_matrix(coo)
+        csr = coo.tocsr()
+        csc = coo.tocsc()
 
         csr.indptr  = csr.indptr.astype(ctypes.c_size_t)
         csr.indices = csr.indices.astype(ctypes.c_size_t)
@@ -654,8 +654,8 @@ class PoisMF:
                 * If passing a DataFrame, must have columns 'UserId', 'ItemId', 'Count'.
                   The 'UserId' column will be remapped, with the mapping returned as
                   part of the output.
-                * If passing a COO matrix, will be casted to CSR.
-                * If passing a CSR matrix (recommended), will use it as-is and will
+                * If passing a COO array/matrix, will be casted to CSR.
+                * If passing a CSR array/matrix (recommended), will use it as-is and will
                   not return a mapping as the output will match row-by-row with 'X'.
         y : None
             Ignored. Kept in place for compatibility with SciKit-Learn pipelining.
@@ -708,13 +708,13 @@ class PoisMF:
             X["UserId"], user_mapping_ = pd.factorize(X.UserId)
             if self.reindex:
                 X["ItemId"] = pd.Categorical(X.ItemId, self.item_mapping_).codes
-            X = csr_matrix(coo_matrix((X.Count, (X.UserId, X.ItemId))))
+            X = coo_array((X.Count, (X.UserId, X.ItemId))).tocsr()
         else:
             if self.reindex:
                 raise ValueError("'X' must be a DataFrame if using 'reindex=True'.")
-            if isspmatrix_coo(X):
-                X = csr_matrix(X)
-            elif not isspmatrix_csr(X):
+            if issparse(X) and (X.format != "csr"):
+                X = X.tocsr()
+            else:
                 raise ValueError("'X' must be a DataFrame, CSR matrix, or COO matrix.")
             user_mapping_ = np.empty(0, dtype=int)
 
@@ -1133,9 +1133,9 @@ class PoisMF:
             )
         else:
             if isinstance(X_test, pd.DataFrame):
-                X_test = coo_matrix((X_test.Count, (X_test.UserId, X_test.ItemId)))
+                X_test = coo_array((X_test.Count, (X_test.UserId, X_test.ItemId)))
             else:
-                if isspmatrix_coo(X_test):
+                if not (issparse(X_test) and (X_test.format == "coo")):
                     raise ValueError("'X_test' must be a DataFrame or COO matrix.")
 
         if X_test.shape[0] > self.nusers:
