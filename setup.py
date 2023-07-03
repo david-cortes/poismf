@@ -212,58 +212,45 @@ class build_ext_subclass( build_ext ):
         return is_supported
 
 
-from_rtd = os.environ.get('READTHEDOCS') == 'True'
-if not from_rtd:
-    setup(
-        name  = "poismf",
-        packages = ["poismf"],
-        author = 'David Cortes',
-        url = 'https://github.com/david-cortes/poismf',
-        version = '0.4.0-7',
-        install_requires = ['numpy', 'pandas>=0.24', 'cython', 'scipy'],
-        description = 'Fast and memory-efficient Poisson factorization for sparse count matrices',
-        cmdclass = {'build_ext': build_ext_subclass},
-        ext_modules = [
-            Extension("poismf.c_funs_double",
-                sources=["poismf/cfuns_double.pyx",
-                         "src/poismf.c", "src/topN.c", "src/pred.c",
-                         "src/nonnegcg.c", "src/tnc.c"],
-                include_dirs=[numpy.get_include(), "src/"],
-                define_macros = [
-                    ("_FOR_PYTHON", None),
-                    ("NDEBUG", None),
-                ]),
-            Extension("poismf.c_funs_float",
-                sources=["poismf/cfuns_float.pyx",
-                         "src/poismf.c", "src/topN.c", "src/pred.c",
-                         "src/nonnegcg.c", "src/tnc.c"],
-                include_dirs=[numpy.get_include(), "src/"],
-                define_macros = [
-                    ("_FOR_PYTHON", None),
-                    ("NDEBUG", None),
-                    ("USE_FLOAT", None)
-                ])
-            ]
-    )
+setup(
+    name  = "poismf",
+    packages = ["poismf"],
+    author = 'David Cortes',
+    url = 'https://github.com/david-cortes/poismf',
+    version = '0.4.0-7',
+    install_requires = ['numpy', 'pandas>=0.24', 'cython', 'scipy'],
+    description = 'Fast and memory-efficient Poisson factorization for sparse count matrices',
+    cmdclass = {'build_ext': build_ext_subclass},
+    ext_modules = [
+        Extension("poismf.c_funs_double",
+            sources=["poismf/cfuns_double.pyx",
+                     "src/poismf.c", "src/topN.c", "src/pred.c",
+                     "src/nonnegcg.c", "src/tnc.c"],
+            include_dirs=[numpy.get_include(), "src/"],
+            define_macros = [
+                ("_FOR_PYTHON", None),
+                ("NDEBUG", None),
+            ]),
+        Extension("poismf.c_funs_float",
+            sources=["poismf/cfuns_float.pyx",
+                     "src/poismf.c", "src/topN.c", "src/pred.c",
+                     "src/nonnegcg.c", "src/tnc.c"],
+            include_dirs=[numpy.get_include(), "src/"],
+            define_macros = [
+                ("_FOR_PYTHON", None),
+                ("NDEBUG", None),
+                ("USE_FLOAT", None)
+            ])
+        ]
+)
 
-    if not found_omp:
-        omp_msg  = "\n\n\nCould not detect OpenMP. Package will be built without multi-threading capabilities. "
-        omp_msg += " To enable multi-threading, first install OpenMP"
-        if (sys.platform[:3] == "dar"):
-            omp_msg += " - for macOS: 'brew install libomp'\n"
-        else:
-            omp_msg += " modules for your compiler. "
-        
-        omp_msg += "Then reinstall this package from scratch: 'pip install --upgrade --no-deps --force-reinstall poismf'.\n"
-        warnings.warn(omp_msg)
-else:
-    setup(
-        name  = "poismf",
-        packages = ["poismf"],
-        author = 'David Cortes',
-        author_email = 'david.cortes.rivera@gmail.com',
-        url = 'https://github.com/david-cortes/poismf',
-        version = '0.4.0-6',
-        install_requires = ['numpy', 'scipy', 'pandas>=0.24', 'cython'],
-        description = 'Fast and memory-efficient Poisson factorization for sparse count matrices',
-    )
+if not found_omp:
+    omp_msg  = "\n\n\nCould not detect OpenMP. Package will be built without multi-threading capabilities. "
+    omp_msg += " To enable multi-threading, first install OpenMP"
+    if (sys.platform[:3] == "dar"):
+        omp_msg += " - for macOS: 'brew install libomp'\n"
+    else:
+        omp_msg += " modules for your compiler. "
+    
+    omp_msg += "Then reinstall this package from scratch: 'pip install --upgrade --no-deps --force-reinstall poismf'.\n"
+    warnings.warn(omp_msg)
