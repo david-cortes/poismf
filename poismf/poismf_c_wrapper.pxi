@@ -9,7 +9,7 @@ cdef extern from "../src/poismf.h":
         tncg = 1
         cg = 2
         pg = 3
-    bint get_has_openmp() nogil
+    bint get_has_openmp() noexcept nogil
     int run_poismf(
         real_t *A, real_t *Xr, sparse_ix *Xr_indptr, sparse_ix *Xr_indices,
         real_t *B, real_t *Xc, sparse_ix *Xc_indptr, sparse_ix *Xc_indices,
@@ -17,7 +17,7 @@ cdef extern from "../src/poismf.h":
         const real_t l2_reg, const real_t l1_reg, const real_t w_mult, real_t step_size,
         const Method method, const bint limit_step, const size_t numiter, const size_t maxupd,
         const bint early_stop, const bint reuse_prev,
-        const bint handle_interrupt, const int nthreads) nogil
+        const bint handle_interrupt, const int nthreads) noexcept nogil
     int factors_single(
         real_t *out, size_t k,
         real_t *Amean, bint reuse_mean,
@@ -25,14 +25,14 @@ cdef extern from "../src/poismf.h":
         real_t *B, real_t *Bsum,
         int maxupd, real_t l2_reg, real_t l1_new, real_t l1_old,
         real_t w_mult
-    ) nogil
+    ) noexcept nogil
     void predict_multiple(
         real_t *out,
         real_t *A, real_t *B,
         sparse_ix *ixA, sparse_ix *ixB,
         size_t n, int k,
         int nthreads
-    ) nogil
+    ) noexcept nogil
     int factors_multiple(
         real_t *A, real_t *B,
         real_t *Bsum, real_t *Amean,
@@ -42,14 +42,14 @@ cdef extern from "../src/poismf.h":
         real_t step_size, size_t niter, size_t maxupd,
         Method method, bint limit_step, bint reuse_mean,
         int nthreads
-    ) nogil
+    ) noexcept nogil
     int topN(
         real_t *a_vec, real_t *B, int k,
         sparse_ix *include_ix, size_t n_include,
         sparse_ix *exclude_ix, size_t n_exclude,
         sparse_ix *outp_ix, real_t *outp_score,
         size_t n_top, size_t n, int nthreads
-    ) nogil
+    ) noexcept nogil
 
 def _get_has_openmp():
     return get_has_openmp()
@@ -254,17 +254,17 @@ def _call_topN(
 from scipy.linalg.cython_blas cimport ddot, daxpy, dscal, dnrm2, dgemv
 from scipy.linalg.cython_blas cimport sdot, saxpy, sscal, snrm2, sgemv
 
-ctypedef double (*ddot_)(const int*, const double*, const int*, const double*, const int*) nogil
-ctypedef void (*daxpy_)(const int*, const double*, const double*, const int*, double*, const int*) nogil
-ctypedef void (*dscal_)(const int*, const double*, double*, const int*) nogil
-ctypedef double (*dnrm2_)(const int*, const double*, const int*) nogil
-ctypedef void (*dgemv_)(const char*, const int*, const int*, const double*, const double*, const int*, const double*, const int*, const double*, double*, const int*) nogil
+ctypedef double (*ddot_)(const int*, const double*, const int*, const double*, const int*) noexcept nogil
+ctypedef void (*daxpy_)(const int*, const double*, const double*, const int*, double*, const int*) noexcept nogil
+ctypedef void (*dscal_)(const int*, const double*, double*, const int*) noexcept nogil
+ctypedef double (*dnrm2_)(const int*, const double*, const int*) noexcept nogil
+ctypedef void (*dgemv_)(const char*, const int*, const int*, const double*, const double*, const int*, const double*, const int*, const double*, double*, const int*) noexcept nogil
 
-ctypedef float (*sdot_)(const int*, const float*, const int*, const float*, const int*) nogil
-ctypedef void (*saxpy_)(const int*, const float*, const float*, const int*, float*, const int*) nogil
-ctypedef void (*sscal_)(const int*, const float*, float*, const int*) nogil
-ctypedef float (*snrm2_)(const int*, const float*, const int*) nogil
-ctypedef void (*sgemv_)(const char*, const int*, const int*, const float*, const float*, const int*, const float*, const int*, const float*, float*, const int*) nogil
+ctypedef float (*sdot_)(const int*, const float*, const int*, const float*, const int*) noexcept nogil
+ctypedef void (*saxpy_)(const int*, const float*, const float*, const int*, float*, const int*) noexcept nogil
+ctypedef void (*sscal_)(const int*, const float*, float*, const int*) noexcept nogil
+ctypedef float (*snrm2_)(const int*, const float*, const int*) noexcept nogil
+ctypedef void (*sgemv_)(const char*, const int*, const int*, const float*, const float*, const int*, const float*, const int*, const float*, float*, const int*) noexcept nogil
 
 ctypedef enum CBLAS_ORDER:
     CblasRowMajor = 101
@@ -290,21 +290,21 @@ ctypedef enum CBLAS_SIDE:
     CblasLeft=141
     CblasRight=142
 
-cdef public double cblas_ddot(const int n, const double *x, const int incx, const double *y, const int incy) nogil:
+cdef public double cblas_ddot(const int n, const double *x, const int incx, const double *y, const int incy) noexcept nogil:
     return (<ddot_>ddot)(&n, x, &incx, y, &incy)
 
-cdef public void cblas_daxpy(const int n, const double alpha, const double *x, const int incx, double *y, const int incy) nogil:
+cdef public void cblas_daxpy(const int n, const double alpha, const double *x, const int incx, double *y, const int incy) noexcept nogil:
     (<daxpy_>daxpy)(&n, &alpha, x, &incx, y, &incy)
 
-cdef public void cblas_dscal(const int N, const double alpha, double *X, const int incX) nogil:
+cdef public void cblas_dscal(const int N, const double alpha, double *X, const int incX) noexcept nogil:
     (<dscal_>dscal)(&N, &alpha, X, &incX)
 
-cdef public double cblas_dnrm2(const int n, const double *x, const int incx) nogil:
+cdef public double cblas_dnrm2(const int n, const double *x, const int incx) noexcept nogil:
     return (<dnrm2_>dnrm2)(&n, x, &incx)
 
 ### Note: Cython refuses to compile a public cdef'd function with enum arguments
 cdef public void cblas_dgemv(const int order,  const int TransA,  const int m, const int n,
-     const double alpha, const double  *a, const int lda,  const double  *x, const int incx,  const double beta,  double  *y, const int incy) nogil:
+     const double alpha, const double  *a, const int lda,  const double  *x, const int incx,  const double beta,  double  *y, const int incy) noexcept nogil:
     cdef char trans
     if (order == CblasColMajor):
         if (TransA == CblasNoTrans):
@@ -327,21 +327,21 @@ cdef public void cblas_dgemv(const int order,  const int TransA,  const int m, c
 
 ##################
 
-cdef public float cblas_sdot(const int n, const float *x, const int incx, const float *y, const int incy) nogil:
+cdef public float cblas_sdot(const int n, const float *x, const int incx, const float *y, const int incy) noexcept nogil:
     return (<sdot_>sdot)(&n, x, &incx, y, &incy)
 
-cdef public void cblas_saxpy(const int n, const float alpha, const float *x, const int incx, float *y, const int incy) nogil:
+cdef public void cblas_saxpy(const int n, const float alpha, const float *x, const int incx, float *y, const int incy) noexcept nogil:
     (<saxpy_>saxpy)(&n, &alpha, x, &incx, y, &incy)
 
-cdef public void cblas_sscal(const int N, const float alpha, float *X, const int incX) nogil:
+cdef public void cblas_sscal(const int N, const float alpha, float *X, const int incX) noexcept nogil:
     (<sscal_>sscal)(&N, &alpha, X, &incX)
 
-cdef public float cblas_snrm2(const int n, const float *x, const int incx) nogil:
+cdef public float cblas_snrm2(const int n, const float *x, const int incx) noexcept nogil:
     return (<snrm2_>snrm2)(&n, x, &incx)
 
 ### Note: Cython refuses to compile a public cdef'd function with enum arguments
 cdef public void cblas_sgemv(const int order,  const int TransA,  const int m, const int n,
-     const float alpha, const float  *a, const int lda,  const float  *x, const int incx,  const float beta,  float  *y, const int incy) nogil:
+     const float alpha, const float  *a, const int lda,  const float  *x, const int incx,  const float beta,  float  *y, const int incy) noexcept nogil:
     cdef char trans
     if (order == CblasColMajor):
         if (TransA == CblasNoTrans):

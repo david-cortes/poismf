@@ -217,7 +217,7 @@ setup(
     packages = ["poismf"],
     author = 'David Cortes',
     url = 'https://github.com/david-cortes/poismf',
-    version = '0.4.0-7',
+    version = '0.4.0-8',
     install_requires = ['numpy', 'pandas>=0.24', 'cython', 'scipy'],
     description = 'Fast and memory-efficient Poisson factorization for sparse count matrices',
     cmdclass = {'build_ext': build_ext_subclass},
@@ -230,6 +230,7 @@ setup(
             define_macros = [
                 ("_FOR_PYTHON", None),
                 ("NDEBUG", None),
+                ("NPY_NO_DEPRECATED_API", "NPY_1_7_API_VERSION"),
             ]),
         Extension("poismf.c_funs_float",
             sources=["poismf/cfuns_float.pyx",
@@ -239,7 +240,8 @@ setup(
             define_macros = [
                 ("_FOR_PYTHON", None),
                 ("NDEBUG", None),
-                ("USE_FLOAT", None)
+                ("NPY_NO_DEPRECATED_API", "NPY_1_7_API_VERSION"),
+                ("USE_FLOAT", None),
             ])
         ]
 )
