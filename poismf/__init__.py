@@ -386,20 +386,17 @@ class PoisMF:
         elif isinstance(X, pd.DataFrame):
             cols_require = ["UserId", "ItemId", "Count"]
             cols_missing = np.setdiff1d(np.array(cols_require),
-                                        X.columns.values)
+                                        X.columns.to_numpy(copy=False))
             if cols_missing.shape[0]:
                 raise ValueError("'X' should have columns: " + ", ".join(cols_require))
             
             if self.reindex:
-                X['UserId'], self.user_mapping_ = pd.factorize(X.UserId)
-                X['ItemId'], self.item_mapping_ = pd.factorize(X.ItemId)
-                ### https://github.com/pandas-dev/pandas/issues/30618
-                self.user_mapping_ = self.user_mapping_.to_numpy()
-                self.item_mapping_ = self.item_mapping_.to_numpy()
-                self.user_mapping_ = self.user_mapping_
-                self.item_mapping_ = self.item_mapping_
+                X['UserId'], self.user_mapping_ = pd.factorize(X["UserId"])
+                X['ItemId'], self.item_mapping_ = pd.factorize(X["ItemId"])
+                self.user_mapping_ = np.require(self.user_mapping_, requirements=["ENSUREARRAY"]).reshape(-1)
+                self.item_mapping_ = np.require(self.item_mapping_, requirements=["ENSUREARRAY"]).reshape(-1)
 
-            coo = coo_array((X.Count, (X.UserId, X.ItemId)))
+            coo = coo_array((X["Count"], (X["UserId"], X["ItemId"])))
 
         else:
             raise ValueError("'X' must be a pandas DataFrame or SciPy COO matrix.")
@@ -408,14 +405,13 @@ class PoisMF:
         csr = coo.tocsr()
         csc = coo.tocsc()
 
-        csr.indptr  = csr.indptr.astype(ctypes.c_size_t)
-        csr.indices = csr.indices.astype(ctypes.c_size_t)
-        if csr.data.dtype != self._dtype:
-            csr.data  = csr.data.astype(self._dtype)
-        csc.indptr  = csc.indptr.astype(ctypes.c_size_t)
-        csc.indices = csc.indices.astype(ctypes.c_size_t)
-        if csc.data.dtype != self._dtype:
-            csc.data  = csc.data.astype(self._dtype)
+        csr.indices = np.require(csr.indices, dtype=ctypes.c_size_t, requirements=["ENSUREARRAY", "C_CONTIGUOUS"])
+        csr.indptr = np.require(csr.indptr, dtype=ctypes.c_size_t, requirements=["ENSUREARRAY", "C_CONTIGUOUS"])
+        csr.data = np.require(csr.data, dtype=self._dtype, requirements=["ENSUREARRAY", "C_CONTIGUOUS"])
+
+        csc.indices = np.require(csc.indices, dtype=ctypes.c_size_t, requirements=["ENSUREARRAY", "C_CONTIGUOUS"])
+        csc.indptr = np.require(csc.indptr, dtype=ctypes.c_size_t, requirements=["ENSUREARRAY", "C_CONTIGUOUS"])
+        csc.data = np.require(csc.data, dtype=self._dtype, requirements=["ENSUREARRAY", "C_CONTIGUOUS"])
 
         return csr, csc
             
@@ -590,9 +586,9 @@ class PoisMF:
 
         if isinstance(X, pd.DataFrame):
             assert X.shape[0] > 0
-            assert 'ItemId' in X.columns.values
-            assert 'Count' in X.columns.values
-            X = [X.ItemId.to_numpy(), X.Count.to_numpy()]
+            assert 'ItemId' in X.columns
+            assert 'Count' in X.columns
+            X = [X["ItemId"].to_numpy(copy=False), X["Count"].to_numpy(copy=False)]
         elif isinstance(X, tuple) or isinstance(X, list):
             X = [np.array(X[0]), np.array(X[1])]
             if X[0].shape[0] != X[1].shape[0]:
@@ -606,12 +602,10 @@ class PoisMF:
         if (imin < 0) or (imax >= self.nitems):
             raise ValueError("'X' contains invalid items.")
 
-        if X[0].dtype != ctypes.c_size_t:
-            X[0] = X[0].astype(ctypes.c_size_t)
-        if X[1].dtype != self._dtype:
-            X[1] = X[1].astype(self._dtype)
-
-        return X[0], X[1]
+        return (
+            np.require(X[0], dtype=ctypes.c_size_t, requirements=["ENSUREARRAY", "C_CONTIGUOUS"]),
+            np.require(X[1], dtype=self._dtype, requirements=["ENSUREARRAY", "C_CONTIGUOUS"]),
+        )
 
     def _process_reg_params(self, l2_reg, l1_reg):
         if isinstance(l2_reg, int) or  isinstance(l2_reg, np.int64):
@@ -703,12 +697,12 @@ class PoisMF:
 
         if isinstance(X, pd.DataFrame):
             cols_require = ["UserId", "ItemId", "Count"]
-            if np.setdiff1d(np.array(cols_require), X.columns.values).shape[0]:
+            if np.setdiff1d(np.array(cols_require), X.columns.to_numpy(copy=False)).shape[0]:
                 raise ValueError("'X' must contain columns " + ", ".join(cols_require))
-            X["UserId"], user_mapping_ = pd.factorize(X.UserId)
+            X["UserId"], user_mapping_ = pd.factorize(X["UserId"])
             if self.reindex:
-                X["ItemId"] = pd.Categorical(X.ItemId, self.item_mapping_).codes
-            X = coo_array((X.Count, (X.UserId, X.ItemId))).tocsr()
+                X["ItemId"] = pd.Categorical(X["ItemId"], self.item_mapping_).codes
+            X = coo_array((X["Count"], (X["UserId"], X["ItemId"]))).tocsr()
         else:
             if self.reindex:
                 raise ValueError("'X' must be a DataFrame if using 'reindex=True'.")
@@ -722,10 +716,10 @@ class PoisMF:
             raise ValueError("'X' must have the same columns (items) as passed to 'fit'.")
 
         return (
-            X.indptr.astype(ctypes.c_size_t),
-            X.indices.astype(ctypes.c_size_t),
-            X.data.astype(self._dtype),
-            user_mapping_
+            np.require(X.indptr, dtype=ctypes.c_size_t, requirements=["ENSUREARRAY", "C_CONTIGUOUS"]),
+            np.require(X.indices, dtype=ctypes.c_size_t, requirements=["ENSUREARRAY", "C_CONTIGUOUS"]),
+            np.require(X.data, dtype=self._dtype, requirements=["ENSUREARRAY", "C_CONTIGUOUS"]),
+            np.require(user_mapping_, requirements=["ENSUREARRAY"]).reshape(-1)
         )
 
     
@@ -754,22 +748,17 @@ class PoisMF:
         """
         assert self.is_fitted
         self._process_nthreads()
-        if isinstance(user, list) or isinstance(user, tuple):
-            user = np.array(user)
-        if isinstance(item, list) or isinstance(item, tuple):
-            item = np.array(item)
-        if isinstance(user, pd.Series):
-            user = user.to_numpy()
-        if isinstance(item, pd.Series):
-            item = item.to_numpy()
+        if not np.isscalar(user):
+            user = np.require(user, requirements=["ENSUREARRAY"]).reshape(-1)
+        if not np.isscalar(item):
+            item = np.require(item, requirements=["ENSUREARRAY"]).reshape(-1)
             
         if isinstance(user, np.ndarray):
-            if len(user.shape) > 1:
-                user = user.reshape(-1)
             assert user.shape[0] > 0
             if self.reindex:
                 if user.shape[0] > 1:
                     user = pd.Categorical(user, self.user_mapping_).codes
+                    user = np.require(user, requirements=["ENSUREARRAY"])
                 else:
                     if len(self.user_dict_):
                         try:
@@ -790,12 +779,11 @@ class PoisMF:
             user = np.array([user])
             
         if isinstance(item, np.ndarray):
-            if len(item.shape) > 1:
-                item = item.reshape(-1)
             assert item.shape[0] > 0
             if self.reindex:
                 if item.shape[0] > 1:
                     item = pd.Categorical(item, self.item_mapping_).codes
+                    item = np.require(item, requirements=["ENSUREARRAY"])
                 else:
                     if len(self.item_dict_):
                         try:
@@ -825,23 +813,21 @@ class PoisMF:
         else:
             c_funs = c_funs_float if self.use_float else c_funs_double
             nan_entries = (user  < 0) | (item < 0) | (user >= self.nusers) | (item >= self.nitems)
-            if np.any(nan_entries):
-                if user.dtype != ctypes.c_size_t:
-                    user = user.astype(ctypes.c_size_t)
-                if item.dtype != ctypes.c_size_t:
-                    item = item.astype(ctypes.c_size_t)
+            if not np.any(nan_entries):
+                user = np.require(user, dtype=ctypes.c_size_t, requirements=["ENSUREARRAY", "C_CONTIGUOUS"])
+                item = np.require(item, dtype=ctypes.c_size_t, requirements=["ENSUREARRAY", "C_CONTIGUOUS"])
                 out = np.empty(user.shape[0], dtype = self._dtype)
                 c_funs._predict_multiple(out, self.A, self.B, user,
                                          item, self.nthreads_)
                 return out
             else:
-                non_na_user = user[~nan_entries]
-                non_na_item = item[~nan_entries]
+                non_na_user = np.require(user[~nan_entries], dtype=ctypes.c_size_t, requirements=["ENSUREARRAY", "C_CONTIGUOUS"])
+                non_na_item = np.require(item[~nan_entries], dtype=ctypes.c_size_t, requirements=["ENSUREARRAY", "C_CONTIGUOUS"])
                 out = np.empty(user.shape[0], dtype = self._dtype)
                 temp = np.empty(np.sum(~nan_entries), dtype = self._dtype)
                 c_funs._predict_multiple(temp, self.A, self.B,
-                                         non_na_user.astype(ctypes.c_size_t),
-                                         non_na_item.astype(ctypes.c_size_t),
+                                         non_na_user,
+                                         non_na_item,
                                          self.nthreads_)
                 out[~nan_entries] = temp
                 out[nan_entries] = np.nan
@@ -949,21 +935,10 @@ class PoisMF:
             raise ValueError("Can only pass one of 'include' or 'exclude'.")
 
         if include is not None:
-            if isinstance(include, list) or isinstance(include, tuple):
-                include = np.array(include)
-            elif isinstance(include, pd.Series):
-                include = include.to_numpy()
-            elif not isinstance(include, np.ndarray):
-                raise ValueError("'include' must be a list, tuple, Series, or array.")
+            include = np.require(include, requirements=["ENSUREARRAY"]).reshape(-1)
 
         if exclude is not None:
-            if isinstance(exclude, list) or isinstance(exclude, tuple):
-                exclude = np.array(exclude)
-            elif isinstance(exclude, pd.Series):
-                exclude = exclude.to_numpy()
-            elif not isinstance(exclude, np.ndarray):
-                raise ValueError("'exclude' must be a list, tuple, Series, or array.")
-
+            exclude = np.require(exclude, requirements=["ENSUREARRAY"]).reshape(-1)
 
         if self.reindex:
             if (include is not None):
@@ -971,11 +946,13 @@ class PoisMF:
                     include = np.array([self.item_mapping_[i] for i in include])
                 else:
                     include = pd.Categorical(include, self.item_mapping_).codes
+                    include = np.require(include, requirements=["ENSUREARRAY"])
             if (exclude is not None):
                 if len(self.item_dict_):
                     exclude = np.array([self.item_mapping_[i] for i in exclude])
                 else:
                     exclude = pd.Categorical(exclude, self.item_mapping_).codes
+                    exclude = np.require(exclude, requirements=["ENSUREARRAY"])
         
         if include is not None:
             imin, imax = include.min(), include.max()
@@ -991,11 +968,10 @@ class PoisMF:
         else:
             exclude = np.empty(0, dtype=ctypes.c_size_t)
 
-        if include.dtype != ctypes.c_size_t:
-            include = include.astype(ctypes.c_size_t)
-        if exclude.dtype != ctypes.c_size_t:
-            exclude = exclude.astype(ctypes.c_size_t)
-        return include, exclude
+        return(
+            np.require(include, dtype=ctypes.c_size_t, requirements=["ENSUREARRAY", "C_CONTIGUOUS"]).reshape(-1),
+            np.require(exclude, dtype=ctypes.c_size_t, requirements=["ENSUREARRAY", "C_CONTIGUOUS"]).reshape(-1),
+        )
 
 
     def topN_new(self, X, n=10, include=None, exclude=None, output_score=False,
@@ -1108,32 +1084,26 @@ class PoisMF:
             if isinstance(X_test, pd.DataFrame):
                 raise ValueError("If using 'reindex=True', 'X_test' must be a DataFrame.")
             cols_require = ["UserId", "ItemId", "Count"]
-            if np.setdiff1d(np.array(cols_require), X_test.columns.values).shape[0]:
+            if np.setdiff1d(np.array(cols_require), X_test.columns.to_numpy(copy=False)).shape[0]:
                 raise ValueError("'X_test' must contain columns " + ", ".join(cols_require))
-            X_test["UserId"] = pd.Categorical(X_test.UserId, self.user_mapping_).codes
-            X_test["ItemId"] = pd.Categorical(X_test.UserId, self.item_mapping_).codes
-            if X_test.UserId.dtype != ctypes.c_size_t:
-                X_test["UserId"] = X_test["UserId"].astype(ctypes.c_size_t)
-            if X_test.ItemId.dtype != ctypes.c_size_t:
-                X_test["ItemId"] = X_test["ItemId"].astype(ctypes.c_size_t)
-            if X_test.Count.dtype != self._dtype:
-                X_test["Count"] = X_test["Count"].astype(self._dtype)
+            X_test["UserId"] = pd.Categorical(X_test["UserId"], self.user_mapping_).codes
+            X_test["ItemId"] = pd.Categorical(X_test["UserId"], self.item_mapping_).codes
 
-            umin, umax = X_test.UserId.min(), X_test.UserId.max()
-            imin, imax = X_test.ItemId.min(), X_test.ItemId.max()
+            umin, umax = X_test["UserId"].min(), X_test["UserId"].max()
+            imin, imax = X_test["ItemId"].min(), X_test["ItemId"].max()
             if (umin < 0) or (umax > self.nusers):
                 raise ValueError("'X_test' contains invalid users.")
             if (imin < 0) or (imax > self.nitems):
                 raise ValueError("'X_test' contains invalid items.")
 
             return (
-                X_test.UserId.to_numpy(),
-                X_test.ItemId.to_numpy(),
-                X_test.Count.to_numpy()
+                np.require(X_test["UserId"].to_numpy(copy=False), dtype=ctypes.c_size_t, requirements=["ENSUREARRAY", "C_CONTIGUOUS"]),
+                np.require(X_test["ItemId"].to_numpy(copy=False), dtype=ctypes.c_size_t, requirements=["ENSUREARRAY", "C_CONTIGUOUS"]),
+                np.require(X_test["Count"].to_numpy(copy=False), dtype=self._dtype, requirements=["ENSUREARRAY", "C_CONTIGUOUS"]),
             )
         else:
             if isinstance(X_test, pd.DataFrame):
-                X_test = coo_array((X_test.Count, (X_test.UserId, X_test.ItemId)))
+                X_test = coo_array((X_test["Count"], (X_test["UserId"], X_test["ItemId"])))
             else:
                 if not (issparse(X_test) and (X_test.format == "coo")):
                     raise ValueError("'X_test' must be a DataFrame or COO matrix.")
@@ -1144,7 +1114,7 @@ class PoisMF:
             raise ValueError("'X_test' cannot contain new items/columns.")
 
         return (
-            X_test.row.astype(ctypes.c_size_t),
-            X_test.col.astype(ctypes.c_size_t),
-            X_test.data.astype(self._dtype)
+            np.require(X_test.row, dtype=ctypes.c_size_t, requirements=["ENSUREARRAY", "C_CONTIGUOUS"]),
+            np.require(X_test.col, dtype=ctypes.c_size_t, requirements=["ENSUREARRAY", "C_CONTIGUOUS"]),
+            np.require(X_test.data, dtype=self._dtype, requirements=["ENSUREARRAY", "C_CONTIGUOUS"]),
         )
