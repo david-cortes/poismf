@@ -15,9 +15,9 @@
 import os
 import sys
 # sys.path.insert(0, os.path.abspath('../'))
-import mock 
-MOCK_MODULES = ['poismf.c_funs_double', 'poismf.c_funs_float', 'c_funs_double', 'c_funs_float']
-sys.modules.update((mod_name, mock.MagicMock()) for mod_name in MOCK_MODULES)
+# import mock 
+# MOCK_MODULES = ['poismf.c_funs_double', 'poismf.c_funs_float', 'c_funs_double', 'c_funs_float']
+# sys.modules.update((mod_name, mock.MagicMock()) for mod_name in MOCK_MODULES)
 
 # -- Project information -----------------------------------------------------
 
