@@ -217,7 +217,7 @@ setup(
     packages = ["poismf"],
     author = 'David Cortes',
     url = 'https://github.com/david-cortes/poismf',
-    version = '0.4.0-10',
+    version = '0.4.0-11',
     install_requires = ['numpy', 'pandas>=0.24', 'cython', 'scipy'],
     description = 'Fast and memory-efficient Poisson factorization for sparse count matrices',
     cmdclass = {'build_ext': build_ext_subclass},

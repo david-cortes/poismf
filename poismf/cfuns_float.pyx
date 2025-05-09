@@ -1,4 +1,4 @@
-#cython: language_level=2
+#cython: freethreading_compatible=True, language_level=2
 import ctypes
 
 ctypedef float real_t
