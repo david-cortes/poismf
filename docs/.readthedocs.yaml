@@ -17,6 +17,9 @@ build:
     # rust: "1.64"
     # golang: "1.19"
 
+sphinx:
+   configuration: docs/source/conf.py
+
 # Optionally build your docs in additional formats such as PDF and ePub
 # formats:
 #    - pdf
